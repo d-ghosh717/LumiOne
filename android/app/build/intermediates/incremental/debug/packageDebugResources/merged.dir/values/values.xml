@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background">#FF0D0D18</color>
+    <color name="on_primary">#FF005762</color>
+    <color name="on_surface">#FFE9E6F7</color>
+    <color name="outline">#FF757482</color>
+    <color name="outline_variant">#FF474754</color>
+    <color name="primary">#FF81ECFF</color>
+    <color name="primary_container">#FF00E3FD</color>
+    <color name="secondary">#FFFF6F7C</color>
+    <color name="surface">#FF0D0D18</color>
+    <color name="surface_container">#FF181826</color>
+    <color name="surface_container_high">#FF1E1E2D</color>
+    <color name="surface_container_highest">#FF242434</color>
+    <color name="tertiary">#FFAC89FF</color>
+    <string name="app_name">LumiOne</string>
+    <style name="Theme.LumiOne" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/background</item>
+        <item name="colorAccent">@color/primary</item>
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:statusBarColor">@color/background</item>
+        <item name="android:navigationBarColor">@color/background</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

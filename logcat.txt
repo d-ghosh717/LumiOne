@@ -1,0 +1,9 @@
+﻿--------- beginning of main
+04-05 12:53:53.760 16330 16330 D LumiOneJS: LOG: [YT] Loading...
+04-05 12:53:53.763 16330 16330 D LumiOneJS: LOG: [YT] Native bridge: available Γ£ô
+04-05 12:53:53.763 16330 16330 D LumiOneJS: LOG: [YT] InnerTube client ready Γ£ô
+04-05 12:53:53.780 16330 16330 D LumiOneJS: LOG: [LumiOne] Initializing...
+04-05 12:53:53.781 16330 16330 D LumiOneJS: LOG: [YT] Searching: "trending new songs IN 2026"
+04-05 12:53:53.784 16330 16330 D LumiOneJS: LOG: [LumiOne] Ready Γ£ô
+04-05 12:53:56.391 16330 16330 D LumiOneJS: LOG: [YT] Found 15 results
+04-05 12:53:56.391 16330 16330 D LumiOneJS: LOG: [API] Trending: 10 results

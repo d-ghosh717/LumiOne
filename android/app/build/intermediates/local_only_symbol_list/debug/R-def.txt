@@ -1,0 +1,18 @@
+R_DEF: Internal format may change without notice
+local
+color background
+color on_primary
+color on_surface
+color outline
+color outline_variant
+color primary
+color primary_container
+color secondary
+color surface
+color surface_container
+color surface_container_high
+color surface_container_highest
+color tertiary
+mipmap ic_launcher
+string app_name
+style Theme.LumiOne

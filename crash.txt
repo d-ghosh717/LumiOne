@@ -1,0 +1,122 @@
+﻿
+  04-05 12:54:24.196  
+4536  4760 I eplm    : 
+#sync() complete
+  04-05 12:54:24.743  
+4536  4760 E enyf    : 
+(REDACTED) Future Monitor 
+failed
+> 04-05 12:54:24.743  
+4536  4760 E enyf    : jav
+a.lang.IllegalStateExcepti
+on: Room cannot verify 
+the data integrity. Looks 
+like you've changed 
+schema but forgot to 
+update the version 
+number. You can simply 
+fix this by increasing 
+the version number. 
+Expected identity hash: 9c
+4eda4e81021ecdb487965477e1
+9017, found: ebf2b5d7d34e9
+c66dab22c6d16796d4a
+  04-05 12:54:24.743  
+4536  4760 E enyf    : 	
+at npp.onOpen(PG:120)
+  04-05 12:54:24.743  
+4536  4760 E enyf    : 	
+at android.database.sqlite
+.SQLiteOpenHelper.getDatab
+aseLocked(SQLiteOpenHelper
+.java:426)
+  04-05 12:54:24.743  
+4536  4760 E enyf    : 	
+at android.database.sqlite
+.SQLiteOpenHelper.getWrita
+bleDatabase(SQLiteOpenHelp
+er.java:316)
+  04-05 12:54:24.743  
+4536  4760 E enyf    : 	
+at npp.b(PG:85)
+  04-05 12:54:24.743  
+4536  4760 E enyf    : 	
+at npq.b(PG:5)
+  04-05 12:54:24.743  
+4536  4760 E enyf    : 	
+at epji.b(PG:9)
+  04-05 12:54:24.743  
+4536  4760 E enyf    : 	
+at nhg.a(PG:47)
+  04-05 12:54:24.743  
+4536  4760 E enyf    : 	
+at nhg.b(PG:1)
+  04-05 12:54:24.743  
+4536  4760 E enyf    : 	
+at nhr.b(PG:10)
+  04-05 12:54:24.743  
+4536  4760 E enyf    : 	
+at ngr.invoke(PG:98)
+  04-05 12:54:24.963  
+1698  9482 W 
+BatteryStatsService: 
+Unknown sensor handle 0 
+received in 
+noteWakeupSensorEvent
+  04-05 12:54:25.279  
+4536  4738 E enyf    : 
+(REDACTED) Future Monitor 
+failed
+> 04-05 12:54:25.279  
+4536  4738 E enyf    : jav
+a.lang.IllegalStateExcepti
+on: Room cannot verify 
+the data integrity. Looks 
+like you've changed 
+schema but forgot to 
+update the version 
+number. You can simply 
+fix this by increasing 
+the version number. 
+Expected identity hash: 9c
+4eda4e81021ecdb487965477e1
+9017, found: ebf2b5d7d34e9
+c66dab22c6d16796d4a
+  04-05 12:54:25.279  
+4536  4738 E enyf    : 	
+at npp.onOpen(PG:120)
+  04-05 12:54:25.279  
+4536  4738 E enyf    : 	
+at android.database.sqlite
+.SQLiteOpenHelper.getDatab
+aseLocked(SQLiteOpenHelper
+.java:426)
+  04-05 12:54:25.279  
+4536  4738 E enyf    : 	
+at android.database.sqlite
+.SQLiteOpenHelper.getWrita
+bleDatabase(SQLiteOpenHelp
+er.java:316)
+  04-05 12:54:25.279  
+4536  4738 E enyf    : 	
+at npp.b(PG:85)
+  04-05 12:54:25.279  
+4536  4738 E enyf    : 	
+at npq.b(PG:5)
+  04-05 12:54:25.279  
+4536  4738 E enyf    : 	
+at epji.b(PG:9)
+  04-05 12:54:25.279  
+4536  4738 E enyf    : 	
+at nhg.a(PG:47)
+  04-05 12:54:25.279  
+4536  4738 E enyf    : 	
+at nhg.b(PG:1)
+  04-05 12:54:25.279  
+4536  4738 E enyf    : 	
+at nhr.b(PG:10)
+  04-05 12:54:25.279  
+4536  4738 E enyf    : 	
+at ngr.invoke(PG:98)
+
+

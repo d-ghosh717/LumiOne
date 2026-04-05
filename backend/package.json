@@ -1,0 +1,15 @@
+{
+  "name": "luminous-player-backend",
+  "version": "1.0.0",
+  "description": "YouTube audio streaming backend for Luminous Player",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "yt-dlp-wrap": "^2.3.12"
+  }
+}

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LumiOne Atmosphere Design System -->
+    <color name="background">#FF0D0D18</color>
+    <color name="surface">#FF0D0D18</color>
+    <color name="surface_container">#FF181826</color>
+    <color name="surface_container_high">#FF1E1E2D</color>
+    <color name="surface_container_highest">#FF242434</color>
+    <color name="primary">#FF81ECFF</color>
+    <color name="primary_container">#FF00E3FD</color>
+    <color name="secondary">#FFFF6F7C</color>
+    <color name="tertiary">#FFAC89FF</color>
+    <color name="on_surface">#FFE9E6F7</color>
+    <color name="on_primary">#FF005762</color>
+    <color name="outline">#FF757482</color>
+    <color name="outline_variant">#FF474754</color>
+</resources>

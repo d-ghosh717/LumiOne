@@ -1,0 +1,266 @@
+/* ═══════════════════════════════════════════════════════════════
+   LUMINOUS ATMOSPHERE — Design System
+   Translated from Stitch MCP Design Tokens
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Fonts ────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* ── Color Tokens ──────────────────────────────────────────── */
+  --background:               #0d0d18;
+  --surface:                  #0d0d18;
+  --surface-dim:              #0d0d18;
+  --surface-bright:           #2b2a3c;
+  --surface-container-lowest: #000000;
+  --surface-container-low:    #12121e;
+  --surface-container:        #181826;
+  --surface-container-high:   #1e1e2d;
+  --surface-container-highest:#242434;
+  --surface-variant:          #242434;
+
+  --primary:          #81ecff;
+  --primary-dim:      #00d4ec;
+  --primary-container:#00e3fd;
+  --on-primary:       #005762;
+  --on-primary-container: #004d57;
+
+  --secondary:          #ff6f7c;
+  --secondary-dim:      #e51245;
+  --secondary-container:#be0036;
+  --on-secondary:       #49000f;
+
+  --tertiary:          #ac89ff;
+  --tertiary-dim:      #874cff;
+  --tertiary-container:#7000ff;
+  --on-tertiary:       #290067;
+
+  --error:             #ff716c;
+  --on-error:          #490006;
+
+  --on-background:     #e9e6f7;
+  --on-surface:        #e9e6f7;
+  --on-surface-variant:#aba9b9;
+  --outline:           #757482;
+  --outline-variant:   #474754;
+
+  --inverse-surface:   #fcf8ff;
+  --inverse-on-surface:#555461;
+  --inverse-primary:   #006976;
+  --surface-tint:      #81ecff;
+
+  /* ── Typography Scale ─────────────────────────────────────── */
+  --font-headline: 'Plus Jakarta Sans', sans-serif;
+  --font-body:     'Inter', sans-serif;
+  --font-label:    'Inter', sans-serif;
+
+  --display-lg:  3.5rem;
+  --display-md:  2.8rem;
+  --display-sm:  2.2rem;
+  --headline-lg: 2rem;
+  --headline-md: 1.75rem;
+  --headline-sm: 1.5rem;
+  --title-lg:    1.375rem;
+  --title-md:    1rem;
+  --title-sm:    0.875rem;
+  --body-lg:     1rem;
+  --body-md:     0.875rem;
+  --body-sm:     0.75rem;
+  --label-lg:    0.875rem;
+  --label-md:    0.75rem;
+  --label-sm:    0.6875rem;
+
+  /* ── Spacing Scale ─────────────────────────────────────────── */
+  --spacing-0:  0;
+  --spacing-1:  0.25rem;
+  --spacing-2:  0.5rem;
+  --spacing-3:  0.75rem;
+  --spacing-4:  1rem;
+  --spacing-5:  1.25rem;
+  --spacing-6:  1.5rem;
+  --spacing-7:  1.75rem;
+  --spacing-8:  2rem;
+  --spacing-9:  2.5rem;
+  --spacing-10: 3rem;
+  --spacing-12: 4rem;
+  --spacing-16: 6rem;
+
+  /* ── Border Radius ────────────────────────────────────────── */
+  --radius-sm:   0.5rem;
+  --radius-md:   1rem;
+  --radius-lg:   1.5rem;
+  --radius-xl:   2rem;
+  --radius-2xl:  2.5rem;
+  --radius-3xl:  3rem;
+  --radius-full: 9999px;
+
+  /* ── Elevation (Ambient Shadows — Tinted, never black) ──── */
+  --shadow-sm:  0 2px 8px rgba(233, 230, 247, 0.03);
+  --shadow-md:  0 4px 16px rgba(233, 230, 247, 0.04);
+  --shadow-lg:  0 8px 32px rgba(233, 230, 247, 0.05);
+  --shadow-xl:  0 16px 48px rgba(233, 230, 247, 0.06);
+  --shadow-glow-primary:   0 0 40px rgba(129, 236, 255, 0.15);
+  --shadow-glow-secondary: 0 0 40px rgba(255, 111, 124, 0.15);
+  --shadow-glow-tertiary:  0 0 40px rgba(172, 137, 255, 0.15);
+
+  /* ── Glass (solid — no backdrop-filter for Android WebView) ─ */
+  --glass-bg:          rgba(18, 18, 30, 0.94);
+  --glass-bg-strong:   rgba(18, 18, 30, 0.97);
+  --glass-border:      rgba(71, 71, 84, 0.22);
+
+  /* ── Transitions ──────────────────────────────────────────── */
+  --ease-out:     cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast:   150ms;
+  --duration-normal: 300ms;
+  --duration-slow:   500ms;
+  --duration-view:   400ms;
+}
+
+/* ── Reset & Base ─────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--background);
+  color: var(--on-surface);
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  position: relative;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
+/* ── Scrollbar Hide ──────────────────────────────────────────── */
+::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; }
+
+/* ── Typography Utilities ─────────────────────────────────────── */
+.text-display-lg {
+  font-family: var(--font-headline);
+  font-size: var(--display-lg);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.text-display-md {
+  font-family: var(--font-headline);
+  font-size: var(--display-md);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+
+.text-headline-lg {
+  font-family: var(--font-headline);
+  font-size: var(--headline-lg);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.text-headline-md {
+  font-family: var(--font-headline);
+  font-size: var(--headline-md);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.text-headline-sm {
+  font-family: var(--font-headline);
+  font-size: var(--headline-sm);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.text-title-lg {
+  font-family: var(--font-headline);
+  font-size: var(--title-lg);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.text-title-md {
+  font-family: var(--font-body);
+  font-size: var(--title-md);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.text-body-md {
+  font-family: var(--font-body);
+  font-size: var(--body-md);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.text-body-sm {
+  font-family: var(--font-body);
+  font-size: var(--body-sm);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.text-label-lg {
+  font-family: var(--font-label);
+  font-size: var(--label-lg);
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+
+.text-label-md {
+  font-family: var(--font-label);
+  font-size: var(--label-md);
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.text-label-sm {
+  font-family: var(--font-label);
+  font-size: var(--label-sm);
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0.05em;
+}
+
+/* ── Color Utilities ──────────────────────────────────────────── */
+.text-primary    { color: var(--primary); }
+.text-secondary  { color: var(--secondary); }
+.text-tertiary   { color: var(--tertiary); }
+.text-muted      { color: var(--on-surface-variant); }
+.text-dim        { color: var(--outline); }
+
+/* ── Glass Surface ────────────────────────────────────────────── */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+
+.glass-strong {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+}
+
+/* ── Surface Hierarchy (no borders, only color shift) ─────────── */
+.surface-lowest  { background: var(--surface-container-lowest); }
+.surface-low     { background: var(--surface-container-low); }
+.surface-mid     { background: var(--surface-container); }
+.surface-high    { background: var(--surface-container-high); }
+.surface-highest { background: var(--surface-container-highest); }

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2">
+    <string-array name="exo_controls_playback_speeds">
+    <item>0.25x</item>
+    <item>0.5x</item>
+    <item>0.75x</item>
+    <item>Normal</item>
+    <item>1.25x</item>
+    <item>1.5x</item>
+    <item>2x</item>
+  </string-array>
+    <plurals name="exo_controls_fastforward_by_amount_description">
+    <item quantity="one">%d saniyə irəli çəkin</item>
+    <item quantity="other">%d saniyə irəli çəkin</item>
+  </plurals>
+    <plurals name="exo_controls_rewind_by_amount_description">
+    <item quantity="one">%d saniyə geri çəkin</item>
+    <item quantity="other">%d saniyə geri çəkin</item>
+  </plurals>
+    <string msgid="5976598919945601918" name="abc_action_bar_home_description">"Əsas səhifəyə keçin"</string>
+    <string msgid="8388173803310557296" name="abc_action_bar_up_description">"Yuxarı keçin"</string>
+    <string msgid="3937310113216875497" name="abc_action_menu_overflow_description">"Digər seçimlər"</string>
+    <string msgid="4692188335987374352" name="abc_action_mode_done">"Hazırdır"</string>
+    <string msgid="1189761859438369441" name="abc_activity_chooser_view_see_all">"Hamısına baxın"</string>
+    <string msgid="2165779757652331008" name="abc_activitychooserview_choose_application">"Tətbiq seçin"</string>
+    <string msgid="4215997306490295099" name="abc_capital_off">"DEAKTİV"</string>
+    <string msgid="884982626291842264" name="abc_capital_on">"AKTİV"</string>
+    <string msgid="8833365367933412986" name="abc_menu_alt_shortcut_label">"Alt+"</string>
+    <string msgid="2223301931652355242" name="abc_menu_ctrl_shortcut_label">"Ctrl+"</string>
+    <string msgid="838001238306846836" name="abc_menu_delete_shortcut_label">"silin"</string>
+    <string msgid="7986526966204849475" name="abc_menu_enter_shortcut_label">"daxil olun"</string>
+    <string msgid="375214403600139847" name="abc_menu_function_shortcut_label">"Funksiya+"</string>
+    <string msgid="4192209724446364286" name="abc_menu_meta_shortcut_label">"Meta+"</string>
+    <string msgid="4741552369836443843" name="abc_menu_shift_shortcut_label">"Shift+"</string>
+    <string msgid="5473865519181928982" name="abc_menu_space_shortcut_label">"space"</string>
+    <string msgid="6180552449598693998" name="abc_menu_sym_shortcut_label">"Sym+"</string>
+    <string msgid="5520303668377388990" name="abc_prepend_shortcut_label">"Menyu+"</string>
+    <string msgid="7208076849092622260" name="abc_search_hint">"Axtarış..."</string>
+    <string msgid="3741173234950517107" name="abc_searchview_description_clear">"Sorğunu silin"</string>
+    <string msgid="693312494995508443" name="abc_searchview_description_query">"Axtarış sorğusu"</string>
+    <string msgid="3417662926640357176" name="abc_searchview_description_search">"Axtarın"</string>
+    <string msgid="1486535517437947103" name="abc_searchview_description_submit">"Sorğunu göndərin"</string>
+    <string msgid="2293578557972875415" name="abc_searchview_description_voice">"Səsli axtarış"</string>
+    <string msgid="8875138169939072951" name="abc_shareactionprovider_share_with">"Paylaşın"</string>
+    <string msgid="9055268688411532828" name="abc_shareactionprovider_share_with_application">"<ns1:g id="APPLICATION_NAME">%s</ns1:g> ilə paylaşın"</string>
+    <string msgid="1656852541809559762" name="abc_toolbar_collapse_description">"Yığcamlaşdırın"</string>
+    <string msgid="881409763997275156" name="call_notification_answer_action">"Cavab verin"</string>
+    <string msgid="8793775615905189152" name="call_notification_answer_video_action">"Video"</string>
+    <string msgid="3229508546291798546" name="call_notification_decline_action">"İmtina edin"</string>
+    <string msgid="2659457946726154263" name="call_notification_hang_up_action">"Dəstəyi asın"</string>
+    <string msgid="6107532579223922871" name="call_notification_incoming_text">"Gələn zəng"</string>
+    <string msgid="8623827134497363134" name="call_notification_ongoing_text">"Davam edən zəng"</string>
+    <string msgid="59049573811482460" name="call_notification_screening_text">"Gələn zəng göstərilir"</string>
+    <string name="exo_controls_cc_disabled_description">Subtitrləri aktiv edin</string>
+    <string name="exo_controls_cc_enabled_description">Subtitrləri deaktiv edin</string>
+    <string name="exo_controls_fastforward_description">İrəli çəkin</string>
+    <string name="exo_controls_fullscreen_enter_description">Tam ekrana daxil olun</string>
+    <string name="exo_controls_fullscreen_exit_description">Tam ekrandan çıxın</string>
+    <string name="exo_controls_hide">Oyunçu nəzarətlərini gizlədin</string>
+    <string name="exo_controls_next_description">Sonra</string>
+    <string name="exo_controls_overflow_hide_description">Əlavə ayarları gizlədin</string>
+    <string name="exo_controls_overflow_show_description">Əlavə ayarları göstərin</string>
+    <string name="exo_controls_pause_description">Pauza</string>
+    <string name="exo_controls_play_description">Oxudun</string>
+    <string name="exo_controls_playback_speed">Sürət</string>
+    <string name="exo_controls_previous_description">Əvvəl</string>
+    <string name="exo_controls_repeat_all_description">Cari rejim: Hamısını təkrarlayın. Təkrarlanma rejimini keçirin.</string>
+    <string name="exo_controls_repeat_off_description">Cari rejim: Heç birini təkrarlamayın. Təkrarlanma rejimini keçirin.</string>
+    <string name="exo_controls_repeat_one_description">Cari rejim: Birini təkrarlayın. Təkrarlanma rejimini keçirin.</string>
+    <string name="exo_controls_rewind_description">Geri çəkin</string>
+    <string name="exo_controls_seek_bar_description">Oxutmanın gedişatı</string>
+    <string name="exo_controls_settings_description">Ayarlar</string>
+    <string name="exo_controls_show">Oyunçu nəzarətlərini göstərin</string>
+    <string name="exo_controls_shuffle_off_description">Qarışdırma rejimini aktiv edin</string>
+    <string name="exo_controls_shuffle_on_description">Qarışdırma rejimini deaktiv edin</string>
+    <string name="exo_controls_stop_description">Dayandırın</string>
+    <string name="exo_controls_vr_description">VR rejimi</string>
+    <string name="exo_download_completed">Endirmə tamamlandı</string>
+    <string name="exo_download_description">Endirin</string>
+    <string name="exo_download_downloading">Endirilir</string>
+    <string name="exo_download_failed">Endirmə alınmadı</string>
+    <string name="exo_download_notification_channel_name">Endirmələr</string>
+    <string name="exo_download_paused">Endirmə durdurulub</string>
+    <string name="exo_download_paused_for_network">Endirmələr şəbəkəni gözləyir</string>
+    <string name="exo_download_paused_for_wifi">Endirmələr WiFi şəbəkəsini gözləyir</string>
+    <string name="exo_download_removing">Endirilənlər silinir</string>
+    <string name="exo_item_list">%1$s, %2$s</string>
+    <string name="exo_media_action_repeat_all_description">Hamısı təkrarlansın</string>
+    <string name="exo_media_action_repeat_off_description">Heç biri təkrarlanmasın</string>
+    <string name="exo_media_action_repeat_one_description">Biri təkrarlansın</string>
+    <string name="exo_track_bitrate">%1$.2f Mbps</string>
+    <string name="exo_track_mono">Mono</string>
+    <string name="exo_track_resolution">%1$d × %2$d</string>
+    <string name="exo_track_role_alternate">Alternativ</string>
+    <string name="exo_track_role_closed_captions">Nüsxəni alan</string>
+    <string name="exo_track_role_commentary">Şərh</string>
+    <string name="exo_track_role_supplementary">Əlavə</string>
+    <string name="exo_track_selection_auto">Avtomatik</string>
+    <string name="exo_track_selection_none">Yoxdur</string>
+    <string name="exo_track_selection_title_audio">Audio</string>
+    <string name="exo_track_selection_title_text">Mətn</string>
+    <string name="exo_track_selection_title_video">Video</string>
+    <string name="exo_track_stereo">Stereo</string>
+    <string name="exo_track_surround">Yüksək səs</string>
+    <string name="exo_track_surround_5_point_1">5.1 yüksək səs</string>
+    <string name="exo_track_surround_7_point_1">7.1 yüksək səs</string>
+    <string name="exo_track_unknown">Naməlum</string>
+    <string msgid="6264217191555673260" name="search_menu_title">"Axtarın"</string>
+    <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
+</resources>

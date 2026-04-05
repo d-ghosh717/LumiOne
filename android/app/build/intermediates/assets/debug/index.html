@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0d18">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>LumiOne</title>
+  <meta name="description" content="LumiOne — Your Sonic Atmosphere. A premium audio player experience.">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Material Symbols -->
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
+
+  <!-- Design System -->
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/screens.css">
+
+  <style>
+    /* Material Symbols config */
+    .material-symbols-rounded {
+      font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+
+    /* Initial loading state */
+    .app-loader {
+      position: fixed;
+      inset: 0;
+      background: var(--background);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing-4);
+      z-index: 9999;
+      transition: opacity 0.5s ease, visibility 0.5s ease;
+    }
+
+    .app-loader.fade-out {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .app-loader-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: var(--radius-xl);
+      background: linear-gradient(135deg, var(--primary), var(--tertiary));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: loaderPulse 1.5s ease-in-out infinite;
+    }
+
+    .app-loader-icon .material-symbols-rounded {
+      font-size: 32px;
+      color: var(--on-primary);
+    }
+
+    .app-loader-text {
+      font-family: var(--font-headline);
+      font-size: var(--headline-sm);
+      font-weight: 700;
+      color: var(--on-surface);
+      letter-spacing: -0.01em;
+    }
+
+    .app-loader-sub {
+      font-family: var(--font-label);
+      font-size: var(--label-md);
+      color: var(--outline);
+      letter-spacing: 0.08em;
+    }
+
+    @keyframes loaderPulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(129, 236, 255, 0.2); }
+      50% { transform: scale(1.08); box-shadow: 0 0 40px rgba(129, 236, 255, 0.4); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══ Loading Screen ═══ -->
+  <div class="app-loader" id="app-loader">
+    <div class="app-loader-icon">
+      <span class="material-symbols-rounded">graphic_eq</span>
+    </div>
+    <div class="app-loader-text">LumiOne</div>
+    <div class="app-loader-sub">YOUR SONIC ATMOSPHERE</div>
+  </div>
+
+  <!-- ═══ App Shell ═══ -->
+  <div id="app">
+
+    <!-- Ambient Background Orbs -->
+    <div class="ambient-bg">
+      <div class="ambient-orb ambient-orb-1"></div>
+      <div class="ambient-orb ambient-orb-2"></div>
+      <div class="ambient-orb ambient-orb-3"></div>
+    </div>
+
+    <!-- ═══ View: Home / Discovery ═══ -->
+    <div class="view" id="view-home">
+      <div id="home-content"></div>
+    </div>
+
+    <!-- ═══ View: Full-Screen Player ═══ -->
+    <div class="view" id="view-player">
+      <div id="player-content"></div>
+    </div>
+
+    <!-- ═══ View: Queue ═══ -->
+    <div class="view" id="view-queue">
+      <div id="queue-content"></div>
+    </div>
+
+    <!-- ═══ View: Search ═══ -->
+    <div class="view" id="view-search">
+      <div id="search-content"></div>
+    </div>
+
+    <!-- ═══ View: Settings ═══ -->
+    <div class="view" id="view-settings">
+      <div id="settings-content"></div>
+    </div>
+
+    <!-- ═══ Mini Player Bar ═══ -->
+    <div id="mini-player" class="mini-player hidden">
+      <img class="mini-player-thumb" src="" alt="" 
+           onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 44 44%22><rect fill=%22%23181826%22 width=%2244%22 height=%2244%22/><text x=%2222%22 y=%2226%22 text-anchor=%22middle%22 fill=%22%23757482%22 font-size=%2216%22>♪</text></svg>'">
+      <div class="mini-player-info">
+        <div class="mini-player-title">Not Playing</div>
+        <div class="mini-player-artist">—</div>
+      </div>
+      <div class="mini-player-controls">
+        <button class="btn btn-icon btn-icon-sm" id="mini-play-btn">
+          <span class="material-symbols-rounded" id="mini-play-icon">play_arrow</span>
+        </button>
+        <button class="btn btn-icon btn-icon-sm" id="mini-next-btn">
+          <span class="material-symbols-rounded">skip_next</span>
+        </button>
+      </div>
+      <div class="mini-player-progress">
+        <div class="mini-player-progress-fill" id="mini-progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- ═══ Bottom Navigation ═══ -->
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-view="home">
+        <span class="material-symbols-rounded">explore</span>
+        <span class="nav-item-label">Discover</span>
+      </button>
+      <button class="nav-item" data-view="search">
+        <span class="material-symbols-rounded">search</span>
+        <span class="nav-item-label">Search</span>
+      </button>
+      <button class="nav-item" data-view="queue">
+        <span class="material-symbols-rounded">queue_music</span>
+        <span class="nav-item-label">Queue</span>
+      </button>
+    </nav>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <!-- ═══ Hidden YouTube Player (audio engine) ═══ -->
+  <div id="yt-player-wrap" style="position:fixed;left:-300px;top:-300px;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;z-index:-1;">
+    <div id="yt-player-container"></div>
+  </div>
+
+
+  <!-- YouTube IFrame Player API -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+
+  <!-- ═══ Scripts ═══ -->
+  <script src="js/piped.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/smart-queue.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+
+  <script>
+    // Dismiss loader after init
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        const loader = document.getElementById('app-loader');
+        if (loader) {
+          loader.classList.add('fade-out');
+          setTimeout(() => loader.remove(), 600);
+        }
+      }, 800);
+    });
+  </script>
+</body>
+</html>

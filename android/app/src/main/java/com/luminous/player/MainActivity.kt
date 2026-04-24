@@ -35,7 +35,7 @@ class MainActivity : AppCompatActivity() {
     private var isPlaying = false
 
     companion object {
-        const val SERVER_URL = "http://10.13.162.54:3000"
+        const val SERVER_URL = "https://lumione.onrender.com"
         const val CHANNEL_ID = "lumione_media"
         const val NOTIFICATION_ID = 1
         

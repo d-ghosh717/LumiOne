@@ -12,10 +12,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.send('LumiOne backend running');
-});
-
 const webPath = path.join(__dirname, '..', 'web');
 app.use(express.static(webPath));
 

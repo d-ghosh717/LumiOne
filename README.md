@@ -1,166 +1,101 @@
-# 🎧 LumiOne — Smart Music Streaming App
+🎧 LumiOne — Smart Music Streaming App
 
-LumiOne is a modern, intelligent music player that streams songs directly from YouTube with a clean audio-first experience, smart autoplay, and personalized recommendations.
-
----
-
-## 🚀 Overview
-
-LumiOne delivers a **smooth, minimal, and smart music experience**:
-
-* Stream songs instantly
-* Enjoy continuous autoplay (like radio)
-* Discover music effortlessly
-* Experience a clean, immersive UI
+LumiOne is a modern music player designed for smooth streaming, clean UI, and a seamless listening experience with background and off-screen playback support.
 
 ---
 
-## ✨ Key Features
+🚀 Overview
 
-### 🔍 Smart Search
+LumiOne provides:
 
-* Instant search results
-* Song, artist, and trending suggestions
-* Fast and responsive
-
----
-
-### 🎵 Audio-First Experience
-
-* Distraction-free music player
-* Background playback support
-* Dynamic visuals and waveform
+* Instant music streaming
+* Background & screen-off playback
+* Clean, minimal interface
+* Fast and responsive experience
 
 ---
 
-### 🔁 Smart Autoplay
+⚠️ Setup (Required)
 
-* Automatically plays similar songs
-* Maintains vibe and continuity
-* No manual effort required
+Before running the app, start the backend server:
 
----
+```bash
+cd backend
+npm start
+```
 
-### 🧠 Intelligent Recommendations
+Then launch the Android app.
 
-LumiOne uses a scoring system:
-
-* Same artist → high priority
-* Keyword similarity → strong match
-* Mood/genre match → better suggestions
-* Popular songs → boosted
-* Played songs → avoided
+❗ The backend must be running for playback to work.
 
 ---
 
-### 📋 Dynamic Queue System
+✨ Key Features
 
-* Always keeps next songs ready
-* Updates in real-time
-* No playback gaps
+🔍 Smart Search
 
----
+* Quick song and artist search
+* Clean and responsive results
 
-### ⚡ Low Latency Streaming
+🎵 Smooth Playback
 
-* Fast start playback
-* Smooth transitions
-* No full downloads required
+* Fast start and low latency
+* Stable streaming experience
 
----
+📱 Background & Off-Screen Play
 
-## 🧩 How It Works
+* Music continues when app is minimized
+* Works with screen turned off
+* Notification controls supported
 
-### 🔄 Flow
-
-1. Search a song
-2. Select and play
-3. System fetches related songs
-4. Queue auto-fills
-5. Next song plays instantly
-
----
-
-### 🧠 Recommendation Logic
-
-Each song gets a score:
-
-* Artist match → +50
-* Keyword match → +10 each
-* Mood match → +25
-* Popularity → +10 to +30
-* Repetition → avoided
-
-Top results are added to queue.
-
----
-
-### 🔁 Radio Mode
-
-* Infinite playback
-* 70% similar songs
-* 30% discovery
-
----
-
-## 🎨 UI/UX Highlights
+🎨 Clean UI
 
 * Minimal dark theme
-* Smooth animations
-* Gesture controls
 * Full player + mini player
-* Smart recommendation sections
+* Smooth navigation
 
 ---
 
-## 🛠️ Tech Stack
+🧩 How It Works
 
-### Frontend
+🔄 Flow
 
-* HTML / CSS / JavaScript (or React)
+Search a song
+→ Select track
+→ App requests stream from backend
+→ Backend fetches audio stream
+→ App plays using audio engine
 
-### Backend
+---
+
+🛠️ Tech Stack
+
+Frontend (Android)
+
+* Kotlin
+* XML UI
+
+Backend
 
 * Node.js
-* Handles search, streaming, recommendations
+* Handles streaming and data fetching
 
-### Player
-
-* Audio engine (ExoPlayer / HTML5)
 
 ---
 
-## ⚠️ Note
+⚠️ Notes
 
-This project is for **educational/demo purposes only**.
-No content is stored or redistributed.
-
----
-
-## 🧪 Challenges
-
-* Stream handling
-* Background playback
-* Queue optimization
-* Recommendation accuracy
+* Ensure backend is running before using the app
+* Works best when device and server are on the same network
 
 ---
 
-## 💡 Future Scope
+🏁 Conclusion
 
-* AI-based recommendations
-* Listening behavior learning
-* Voice search
-* UI enhancements
+LumiOne delivers a smooth and reliable music experience with background playback and a clean interface.
 
 ---
 
-## 🏁 Conclusion
-
-LumiOne combines **streaming + smart autoplay + clean UI** to create a powerful music experience.
-
----
-
-## ⭐ Support
+⭐ Support
 
 If you like LumiOne, consider giving it a star 🚀

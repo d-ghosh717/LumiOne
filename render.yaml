@@ -4,7 +4,7 @@ services:
     env: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && bash render-build.sh
+    buildCommand: npm install && pip install -r requirements.txt
     startCommand: npm start
     envVars:
       - key: NODE_ENV

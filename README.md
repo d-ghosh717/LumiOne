@@ -1,12 +1,12 @@
-🎧 LumiOne — Smart Music Streaming App
+# 🎧 LumiOne — Smart Music Streaming App
 
 LumiOne is a modern music player designed for smooth streaming, clean UI, and a seamless listening experience with background and off-screen playback support.
 
 ---
 
-🚀 Overview
+## 🚀 Overview
 
-LumiOne provides:
+### LumiOne provides:
 
 * Instant music streaming
 * Background & screen-off playback
@@ -15,7 +15,7 @@ LumiOne provides:
 
 ---
 
-⚠️ Setup (Required)
+## ⚠️ Setup (Required)
 
 Before running the app, start the backend server:
 
@@ -30,25 +30,25 @@ Then launch the Android app.
 
 ---
 
-✨ Key Features
+## ✨ Key Features
 
-🔍 Smart Search
+### 🔍 Smart Search
 
 * Quick song and artist search
 * Clean and responsive results
 
-🎵 Smooth Playback
+### 🎵 Smooth Playback
 
 * Fast start and low latency
 * Stable streaming experience
 
-📱 Background & Off-Screen Play
+### 📱 Background & Off-Screen Play
 
 * Music continues when app is minimized
 * Works with screen turned off
 * Notification controls supported
 
-🎨 Clean UI
+### 🎨 Clean UI
 
 * Minimal dark theme
 * Full player + mini player
@@ -56,9 +56,9 @@ Then launch the Android app.
 
 ---
 
-🧩 How It Works
+## 🧩 How It Works
 
-🔄 Flow
+### 🔄 Flow
 
 Search a song
 → Select track
@@ -68,14 +68,14 @@ Search a song
 
 ---
 
-🛠️ Tech Stack
+## 🛠️ Tech Stack
 
-Frontend (Android)
+### Frontend (Android)
 
 * Kotlin
 * XML UI
 
-Backend
+### Backend
 
 * Node.js
 * Handles streaming and data fetching
@@ -83,19 +83,19 @@ Backend
 
 ---
 
-⚠️ Notes
+## ⚠️ Notes
 
 * Ensure backend is running before using the app
 * Works best when device and server are on the same network
 
 ---
 
-🏁 Conclusion
+## 🏁 Conclusion
 
 LumiOne delivers a smooth and reliable music experience with background playback and a clean interface.
 
 ---
 
-⭐ Support
+## ⭐ Support
 
 If you like LumiOne, consider giving it a star 🚀

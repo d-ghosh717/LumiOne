@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ── Neon Nocturne Palette ─────────────────────────────────── -->
+    <color name="background">#0E0E10</color>
+    <color name="surface">#19191C</color>
+    <color name="surface_container">#1F1F22</color>
+    <color name="surface_container_high">#262528</color>
+    <color name="surface_bright">#2C2C2F</color>
+
+    <!-- Primary: Lavender -->
+    <color name="primary">#BA9EFF</color>
+    <color name="primary_dim">#8455EF</color>
+    <color name="primary_container">#AE8DFF</color>
+
+    <!-- Secondary: Cyan -->
+    <color name="secondary">#53DDFC</color>
+    <color name="secondary_dim">#40CEED</color>
+
+    <!-- Tertiary: Magenta -->
+    <color name="tertiary">#EC63FF</color>
+
+    <!-- Text -->
+    <color name="on_background">#F9F5F8</color>
+    <color name="on_surface_variant">#ADAAAD</color>
+    <color name="outline">#767577</color>
+    <color name="outline_variant">#48474A</color>
+
+    <!-- Error -->
+    <color name="error">#FF6E84</color>
+
+    <!-- Transparent overlays -->
+    <color name="glass_50">#CC19191C</color>
+    <color name="glass_40">#661F1F22</color>
+    <color name="white_10">#1AFFFFFF</color>
+    <color name="primary_20">#33BA9EFF</color>
+</resources>

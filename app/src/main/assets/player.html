@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LumiOne Player Engine</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 1px; height: 1px;
+      overflow: hidden;
+      background: transparent;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    /* Completely hide the YouTube iframe and all its chrome */
+    #player-container {
+      position: fixed;
+      top: -9999px;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    iframe {
+      width: 1px !important;
+      height: 1px !important;
+      position: absolute;
+      top: -9999px;
+      left: -9999px;
+    }
+  </style>
+</head>
+<body>
+<div id="player-container">
+  <div id="ytplayer"></div>
+</div>
+
+<script>
+  'use strict';
+
+  var player = null;
+  var currentVideoId = null;
+  var isReady = false;
+  var pendingVideoId = null;
+  var pendingAutoPlay = false;
+  var stateCheckInterval = null;
+
+  // Load YouTube IFrame API
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  var firstScriptTag = document.getElementsByTagName('script')[0];
+  firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+  function onYouTubeIframeAPIReady() {
+    player = new YT.Player('ytplayer', {
+      width: '1',
+      height: '1',
+      playerVars: {
+        autoplay: 0,
+        controls: 0,
+        disablekb: 1,
+        enablejsapi: 1,
+        fs: 0,
+        iv_load_policy: 3,
+        modestbranding: 1,
+        playsinline: 1,
+        rel: 0,
+        showinfo: 0,
+        origin: window.location.origin,
+        vq: 'tiny'  // Force lowest video quality (audio priority)
+      },
+      events: {
+        onReady: onPlayerReady,
+        onStateChange: onPlayerStateChange,
+        onError: onPlayerError
+      }
+    });
+  }
+
+  function onPlayerReady(event) {
+    isReady = true;
+    // Start state polling
+    startStatePolling();
+    // Notify Android bridge
+    try {
+      Android.onReady();
+    } catch(e) {}
+    // Play pending video if queued
+    if (pendingVideoId) {
+      loadVideo(pendingVideoId, pendingAutoPlay);
+      pendingVideoId = null;
+    }
+  }
+
+  function onPlayerStateChange(event) {
+    var state = event.data;
+    try {
+      switch(state) {
+        case YT.PlayerState.ENDED:
+          Android.onEnd();
+          break;
+        case YT.PlayerState.PLAYING:
+          Android.onPlaying();
+          break;
+        case YT.PlayerState.PAUSED:
+          Android.onPaused();
+          break;
+        case YT.PlayerState.BUFFERING:
+          Android.onBuffering();
+          break;
+      }
+    } catch(e) {}
+  }
+
+  function onPlayerError(event) {
+    try {
+      Android.onError(event.data);
+    } catch(e) {}
+  }
+
+  function startStatePolling() {
+    if (stateCheckInterval) clearInterval(stateCheckInterval);
+    stateCheckInterval = setInterval(function() {
+      if (player && player.getCurrentTime) {
+        try {
+          var currentTime = player.getCurrentTime() || 0;
+          var duration = player.getDuration() || 0;
+          var buffered = player.getVideoLoadedFraction() || 0;
+          Android.onProgress(
+            Math.round(currentTime * 1000),
+            Math.round(duration * 1000),
+            Math.round(buffered * 100)
+          );
+        } catch(e) {}
+      }
+    }, 1000);
+  }
+
+  // ─── JS API exposed to Android bridge ────────────────────────────────────────
+
+  function loadVideo(videoId, autoPlay) {
+    currentVideoId = videoId;
+    if (!isReady || !player) {
+      pendingVideoId = videoId;
+      pendingAutoPlay = autoPlay;
+      return;
+    }
+    if (autoPlay) {
+      player.loadVideoById({ videoId: videoId, suggestedQuality: 'tiny' });
+    } else {
+      player.cueVideoById({ videoId: videoId, suggestedQuality: 'tiny' });
+    }
+  }
+
+  function playVideo() {
+    if (player && isReady) player.playVideo();
+  }
+
+  function pauseVideo() {
+    if (player && isReady) player.pauseVideo();
+  }
+
+  function seekTo(ms) {
+    if (player && isReady) player.seekTo(ms / 1000, true);
+  }
+
+  function setVolume(level) {
+    if (player && isReady) player.setVolume(level);
+  }
+
+  function getPlayerState() {
+    if (player && isReady) return player.getPlayerState();
+    return -1;
+  }
+
+  function stopVideo() {
+    if (player && isReady) player.stopVideo();
+  }
+
+  // Expose globally so Android WebView JS evaluation can call them
+  window.LumiPlayer = {
+    loadVideo: loadVideo,
+    play: playVideo,
+    pause: pauseVideo,
+    seek: seekTo,
+    stop: stopVideo,
+    setVolume: setVolume,
+    getState: getPlayerState
+  };
+</script>
+</body>
+</html>

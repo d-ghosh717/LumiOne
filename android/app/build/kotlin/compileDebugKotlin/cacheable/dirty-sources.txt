@@ -1,2 +1,0 @@
-D:\ANTI\LumiOne\android\app\src\main\java\com\luminous\player\MainActivity.kt
-D:\ANTI\LumiOne\android\app\src\main\java\com\luminous\player\MediaPlaybackService.kt

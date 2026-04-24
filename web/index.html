@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LumiOne — Music Player</title>
+  <meta name="description" content="Stream YouTube music with a beautiful neon interface">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+
+
+  <div class="app">
+
+    <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z" fill="url(#lg1)"/>
+            <defs>
+              <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#ba9eff"/>
+                <stop offset="100%" stop-color="#53ddfc"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <span class="brand-name">LumiOne</span>
+      </div>
+
+      <!-- Search -->
+      <div class="search-wrap">
+        <div class="search-field">
+          <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            id="search-input"
+            type="text"
+            placeholder="Search songs, artists…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Search tracks"
+          >
+        </div>
+        <button id="btn-search" class="btn-search">Search</button>
+      </div>
+
+      <!-- Status / spinner -->
+      <div id="search-status" class="search-status" hidden></div>
+
+      <!-- Results -->
+      <ul id="search-results" class="result-list" role="listbox" aria-label="Search results"></ul>
+
+      <!-- Queue -->
+      <div class="queue-header" id="queue-header" hidden>
+        <span class="section-label">Up Next</span>
+        <button id="btn-clear" class="btn-ghost-sm">Clear</button>
+      </div>
+      <ul id="queue-list" class="queue-list" aria-label="Queue"></ul>
+    </aside>
+
+    <!-- ═══════════════════ PLAYER ═══════════════════ -->
+    <main class="player">
+
+      <!-- Album art -->
+      <div class="art-wrap">
+        <div id="album-art" class="album-art">
+          <svg width="60" height="60" viewBox="0 0 24 24" fill="none" opacity="0.3">
+            <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z" fill="#ba9eff"/>
+          </svg>
+        </div>
+        <div class="art-glow"></div>
+      </div>
+
+      <!-- Track info -->
+      <div class="track-info">
+        <p id="track-title" class="track-title">Select a track to play</p>
+        <p id="track-artist" class="track-artist">Search something above →</p>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="progress-row">
+        <span id="time-cur" class="time">0:00</span>
+        <div id="progress-bar" class="progress-bar" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+          <div class="progress-track">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+          <div id="progress-thumb" class="progress-thumb"></div>
+        </div>
+        <span id="time-dur" class="time">0:00</span>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button id="btn-shuffle" class="ctrl-btn ctrl-sm" title="Shuffle" aria-pressed="false">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/>
+            <polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>
+          </svg>
+        </button>
+
+        <button id="btn-prev" class="ctrl-btn" title="Previous">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/>
+          </svg>
+        </button>
+
+        <button id="btn-play" class="ctrl-btn ctrl-play" title="Play / Pause" aria-label="Play">
+          <!-- Play icon -->
+          <svg id="icon-play" width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          <!-- Pause icon -->
+          <svg id="icon-pause" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+          <!-- Loading spinner -->
+          <svg id="icon-load" width="28" height="28" viewBox="0 0 24 24" fill="none" style="display:none" class="spin">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2.5" stroke-dasharray="30 60" />
+          </svg>
+        </button>
+
+        <button id="btn-next" class="ctrl-btn" title="Next">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/>
+          </svg>
+        </button>
+
+        <button id="btn-repeat" class="ctrl-btn ctrl-sm" title="Repeat" aria-pressed="false">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="17 1 21 5 17 9"/>
+            <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+            <polyline points="7 23 3 19 7 15"/>
+            <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Volume -->
+      <div class="volume-row">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" class="vol-icon">
+          <path d="M18.5 12A6.5 6.5 0 0 0 15 6.23V17.77A6.5 6.5 0 0 0 18.5 12zM5 9v6h4l5 5V4L9 9H5z"/>
+        </svg>
+        <input id="vol-slider" type="range" min="0" max="100" value="80" class="vol-slider" aria-label="Volume">
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+
+  <script src="script.js"></script>
+</body>
+</html>

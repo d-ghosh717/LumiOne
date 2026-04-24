@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.luminous.player.app-mergeDebugResources-25:/values-pt-rBR/values-pt-rBR.xml",
+            "outputFile": "com.luminous.player.app-mergeDebugResources-19:/values-pt-rBR/values-pt-rBR.xml",
             "map": [
                 {
                     "source": "C:\\Users\\dibya\\.gradle\\caches\\8.9\\transforms\\4427ea441abf7f7d0532b32b467014c1\\transformed\\core-1.12.0\\res\\values-pt-rBR\\values-pt-rBR.xml",

@@ -3,6 +3,8 @@ const cors = require('cors');
 const { exec, spawn } = require('child_process');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
+const https = require('https');
 
 const app = express();
 const PORT = 3000;
@@ -10,13 +12,12 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
-// Serve frontend assets for browser testing
-const assetsPath = path.join(__dirname, '..', 'android', 'app', 'src', 'main', 'assets');
-app.use(express.static(assetsPath));
+// Serve the web frontend — access at http://localhost:3000
+const webPath = path.join(__dirname, '..', 'web');
+app.use(express.static(webPath));
 
 // Helper: Get yt-dlp binary path — checks PATH then common pip locations
 function getYtDlpPath() {
-    const fs = require('fs');
     const candidates = [
         'yt-dlp',  // If on PATH
     ];
@@ -41,12 +42,18 @@ function getYtDlpPath() {
     return candidates[0];
 }
 
+// Cache the resolved yt-dlp path
+let resolvedYtDlpPath = null;
+function ytdlp() {
+    if (!resolvedYtDlpPath) resolvedYtDlpPath = getYtDlpPath();
+    return resolvedYtDlpPath;
+}
+
 // ─── API: Search YouTube ───────────────────────────────────────
 app.get('/api/search', async (req, res) => {
     const query = req.query.q;
     if (!query) return res.status(400).json({ error: 'Query parameter "q" is required' });
 
-    const ytdlp = getYtDlpPath();
     const args = [
         `ytsearch10:${query} song`,
         '--dump-json',
@@ -55,7 +62,7 @@ app.get('/api/search', async (req, res) => {
         '--default-search', 'ytsearch',
     ];
 
-    const proc = spawn(ytdlp, args);
+    const proc = spawn(ytdlp(), args);
     let output = '';
     let errorOutput = '';
 
@@ -107,102 +114,151 @@ app.get('/api/search', async (req, res) => {
     });
 });
 
-// ─── API: Stream Audio ─────────────────────────────────────────
-// Strategy: Get direct audio URL from YouTube, redirect client to it (fastest)
-// Fallback: Pipe through yt-dlp if URL extraction fails
+// ─── Direct URL Cache ──────────────────────────────────────────
+const urlCache = {}; // videoId -> { url, expireTime }
+
+async function getDirectUrl(videoId) {
+    if (urlCache[videoId] && urlCache[videoId].expireTime > Date.now()) {
+        return urlCache[videoId].url;
+    }
+    return new Promise((resolve) => {
+        const url = `https://www.youtube.com/watch?v=${videoId}`;
+        const urlArgs = [url, '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio', '--get-url', '--no-warnings', '--no-playlist'];
+        const urlProc = spawn(ytdlp(), urlArgs);
+        let urlOutput = '';
+        urlProc.stdout.on('data', (data) => { urlOutput += data.toString(); });
+        urlProc.on('close', (code) => {
+            const directUrl = urlOutput.trim();
+            if (code === 0 && directUrl.startsWith('http')) {
+                urlCache[videoId] = { url: directUrl, expireTime: Date.now() + 2 * 60 * 60 * 1000 };
+                resolve(directUrl);
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
+// ─── API: Stream Audio ──────────────────────────────────────────
+// Proxies direct URL to support Range requests (seeking) and bypass CORS
 app.get('/api/stream/:videoId', async (req, res) => {
     const { videoId } = req.params;
+    console.log(`[STREAM] Request for: ${videoId}, Range: ${req.headers.range || 'none'}`);
+
+    const directUrl = await getDirectUrl(videoId);
+    if (!directUrl) {
+        console.log(`[STREAM] Failed to get URL, falling back to pipe`);
+        return pipeAudio(videoId, res);
+    }
+
+    const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    };
+    if (req.headers.range) {
+        headers['Range'] = req.headers.range;
+    }
+
+    https.get(directUrl, { headers }, (proxyRes) => {
+        // Forward HTTP status and headers
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.pipe(res);
+    }).on('error', (err) => {
+        console.error('[PROXY] Error:', err);
+        if (!res.headersSent) pipeAudio(videoId, res);
+    });
+});
+
+// ─── API: Pipe Audio (always pipe mode, no redirect) ────────────
+// Used as fallback when redirect mode fails (e.g. CORS, CDN issues)
+app.get('/api/pipe/:videoId', async (req, res) => {
+    const { videoId } = req.params;
+    console.log(`[PIPE] Request for: ${videoId}`);
+    pipeAudio(videoId, res);
+});
+
+// ─── Shared pipe logic ──────────────────────────────────────────
+function pipeAudio(videoId, res) {
     const url = `https://www.youtube.com/watch?v=${videoId}`;
-    const ytdlp = getYtDlpPath();
-
-    console.log(`[STREAM] Request for: ${videoId}`);
-
-    // Phase 1: Try to get direct audio URL (fastest — client fetches directly)
-    const urlArgs = [
+    const pipeArgs = [
         url,
         '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
-        '--get-url',
+        '-o', '-',
         '--no-warnings',
         '--no-playlist',
         '--no-check-certificates',
     ];
 
-    const urlProc = spawn(ytdlp, urlArgs);
-    let urlOutput = '';
-    let urlError = '';
+    const pipeProc = spawn(ytdlp(), pipeArgs);
+    let headersSent = false;
+    let hasData = false;
 
-    urlProc.stdout.on('data', (data) => { urlOutput += data.toString(); });
-    urlProc.stderr.on('data', (data) => { urlError += data.toString(); });
-
-    urlProc.on('close', (code) => {
-        const directUrl = urlOutput.trim();
-        
-        if (code === 0 && directUrl && directUrl.startsWith('http')) {
-            console.log(`[STREAM] Got direct URL for ${videoId}, redirecting`);
-            // Redirect client to the direct YouTube audio URL
-            return res.redirect(directUrl);
+    pipeProc.stdout.on('data', (chunk) => {
+        if (!headersSent) {
+            headersSent = true;
+            hasData = true;
+            // Detect format from first bytes
+            const contentType = detectAudioType(chunk);
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Transfer-Encoding', 'chunked');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Accept-Ranges', 'none');
         }
-
-        console.log(`[STREAM] URL extraction failed (code: ${code}), falling back to pipe mode`);
-        if (urlError) console.error('[STREAM] stderr:', urlError.substring(0, 300));
-
-        // Phase 2: Fallback — pipe raw audio through yt-dlp
-        const pipeArgs = [
-            url,
-            '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
-            '-o', '-',
-            '--no-warnings',
-            '--no-playlist',
-            '--no-check-certificates',
-        ];
-
-        const pipeProc = spawn(ytdlp, pipeArgs);
-
-        res.setHeader('Content-Type', 'audio/webm');
-        res.setHeader('Transfer-Encoding', 'chunked');
-        res.setHeader('Cache-Control', 'no-cache');
-
-        pipeProc.stdout.pipe(res);
-
-        pipeProc.stderr.on('data', (data) => {
-            const msg = data.toString();
-            if (!msg.includes('[download]') && !msg.includes('Downloading')) {
-                console.error('[STREAM] pipe stderr:', msg.substring(0, 200));
-            }
-        });
-
-        pipeProc.on('error', (err) => {
-            console.error('[STREAM] pipe error:', err.message);
-            if (!res.headersSent) res.status(500).json({ error: 'Stream failed' });
-        });
-
-        res.on('close', () => {
-            console.log(`[STREAM] Client disconnected: ${videoId}`);
-            pipeProc.kill();
-        });
-
-        pipeProc.on('close', (pipeCode) => {
-            if (pipeCode !== 0) console.error(`[STREAM] pipe exited with code ${pipeCode}`);
-            console.log(`[STREAM] Stream ended for: ${videoId}`);
-        });
+        res.write(chunk);
     });
 
-    urlProc.on('error', (err) => {
-        console.error('[STREAM] yt-dlp spawn error:', err.message);
-        if (!res.headersSent) {
-            res.status(500).json({ error: 'yt-dlp not found. Install: pip install yt-dlp' });
+    pipeProc.stderr.on('data', (data) => {
+        const msg = data.toString();
+        if (!msg.includes('[download]') && !msg.includes('Downloading')) {
+            console.error('[PIPE] stderr:', msg.substring(0, 200));
         }
     });
-});
+
+    pipeProc.on('error', (err) => {
+        console.error('[PIPE] error:', err.message);
+        if (!headersSent) res.status(500).json({ error: 'Stream failed' });
+    });
+
+    res.on('close', () => {
+        console.log(`[PIPE] Client disconnected: ${videoId}`);
+        pipeProc.kill();
+    });
+
+    pipeProc.on('close', (pipeCode) => {
+        if (pipeCode !== 0 && !hasData) {
+            console.error(`[PIPE] Failed with code ${pipeCode}`);
+            if (!headersSent) res.status(500).json({ error: 'Could not extract audio' });
+        }
+        if (headersSent) res.end();
+        console.log(`[PIPE] Stream ended for: ${videoId}`);
+    });
+}
+
+// Detect audio MIME type from first bytes
+function detectAudioType(buffer) {
+    if (buffer.length >= 4) {
+        // Check for WebM magic bytes (0x1A 0x45 0xDF 0xA3)
+        if (buffer[0] === 0x1A && buffer[1] === 0x45 && buffer[2] === 0xDF && buffer[3] === 0xA3) {
+            return 'audio/webm';
+        }
+        // Check for MP4/M4A (ftyp box)
+        if (buffer.length >= 8) {
+            const ftyp = buffer.slice(4, 8).toString('ascii');
+            if (ftyp === 'ftyp') return 'audio/mp4';
+        }
+        // Check for Ogg
+        if (buffer.slice(0, 4).toString('ascii') === 'OggS') return 'audio/ogg';
+    }
+    // Default fallback
+    return 'audio/mp4';
+}
 
 // ─── API: Get Video Info ────────────────────────────────────────
 app.get('/api/info/:videoId', async (req, res) => {
     const { videoId } = req.params;
     const url = `https://www.youtube.com/watch?v=${videoId}`;
-    const ytdlp = getYtDlpPath();
 
     const args = [url, '--dump-json', '--no-warnings', '--no-playlist'];
-    const proc = spawn(ytdlp, args);
+    const proc = spawn(ytdlp(), args);
     let output = '';
 
     proc.stdout.on('data', (data) => { output += data.toString(); });
@@ -229,9 +285,7 @@ app.get('/api/info/:videoId', async (req, res) => {
 });
 
 // ─── API: Trending ──────────────────────────────────────────────
-// Uses ytsearch for speed — playlist fetching is too slow
 app.get('/api/trending', async (req, res) => {
-    const ytdlp = getYtDlpPath();
     const query = req.query.genre || 'Hindi pop hits 2024';
     const args = [
         `ytsearch8:${query}`,
@@ -241,7 +295,7 @@ app.get('/api/trending', async (req, res) => {
         '--no-check-certificates',
     ];
 
-    const proc = spawn(ytdlp, args);
+    const proc = spawn(ytdlp(), args);
     let output = '';
     let errorOutput = '';
 
@@ -288,7 +342,7 @@ app.get('/api/trending', async (req, res) => {
 
 // ─── API: Health Check ──────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', ytdlp: ytdlp(), timestamp: new Date().toISOString() });
 });
 
 // ─── Helper ─────────────────────────────────────────────────────
@@ -312,17 +366,20 @@ function getLocalIP() {
     return '127.0.0.1';
 }
 
+// ─── Keep server alive ──────────────────────────────────────────
+process.on('uncaughtException', err => console.error('[UNCAUGHT]', err.message));
+process.on('unhandledRejection', err => console.error('[UNHANDLED]', err?.message || err));
+
 // ─── Start Server ───────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
     const localIP = getLocalIP();
     console.log('');
     console.log('╔══════════════════════════════════════════════════╗');
-    console.log('║       🎵 Luminous Player Backend v1.0           ║');
+    console.log('║           🎵 LumiOne Server v3.0                ║');
     console.log('╠══════════════════════════════════════════════════╣');
-    console.log(`║  Local:   http://localhost:${PORT}                  ║`);
+    console.log(`║  Web UI:  http://localhost:${PORT}                  ║`);
     console.log(`║  Network: http://${localIP}:${PORT}            ║`);
-    console.log('║                                                  ║');
-    console.log('║  Use the Network URL in the Android app!         ║');
+    console.log('║  yt-dlp:  ' + ytdlp().substring(0, 38).padEnd(38) + ' ║');
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
 });

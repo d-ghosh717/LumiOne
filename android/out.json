@@ -1,0 +1,14 @@
+{
+  "error": {
+    "code": 400,
+    "message": "Precondition check failed.",
+    "errors": [
+      {
+        "message": "Precondition check failed.",
+        "domain": "global",
+        "reason": "failedPrecondition"
+      }
+    ],
+    "status": "FAILED_PRECONDITION"
+  }
+}

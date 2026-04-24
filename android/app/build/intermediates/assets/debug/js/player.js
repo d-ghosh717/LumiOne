@@ -41,6 +41,18 @@ const Player = (() => {
     if (window.Player.onProgressUpdate) window.Player.onProgressUpdate(posSec, durSec);
   };
 
+  window.Player.onExoError = function(message) {
+    console.error('[Exo] Playback error:', message);
+    if (window.Player.onError) window.Player.onError(message);
+    // Auto-skip to next track after a short delay so the user isn't stuck
+    setTimeout(function() {
+      if (queue.length > 0 && currentIndex < queue.length - 1) {
+        console.log('[Exo] Auto-skipping to next track after error');
+        playNext();
+      }
+    }, 1500);
+  };
+
   // ── Core Playback Methods ────────────────────────────────────
 
   function togglePlay() {
@@ -267,7 +279,8 @@ const Player = (() => {
     // Re-expose bridge-hooks on the returned object just in case UI calls them
     onExoStateChanged: window.Player.onExoStateChanged,
     onExoTrackEnded: window.Player.onExoTrackEnded,
-    onExoProgress: window.Player.onExoProgress
+    onExoProgress: window.Player.onExoProgress,
+    onExoError: window.Player.onExoError
   };
 })();
 

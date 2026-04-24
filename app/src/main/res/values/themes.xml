@@ -1,0 +1,18 @@
+<resources>
+    <style name="Theme.LumiOne" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#BA9EFF</item>
+        <item name="colorPrimaryVariant">#8455EF</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#53DDFC</item>
+        <item name="colorOnSecondary">#004B58</item>
+        <item name="colorSurface">#19191C</item>
+        <item name="colorOnSurface">#F9F5F8</item>
+        <item name="colorBackground">#0E0E10</item>
+        <item name="colorOnBackground">#F9F5F8</item>
+        <item name="android:windowBackground">#0E0E10</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">#0E0E10</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

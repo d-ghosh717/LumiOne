@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LumiOne</string>
+    <string name="now_playing">Now Playing</string>
+    <string name="search_hint">Search artists, songs, playlists…</string>
+    <string name="trending_now">🔥 Trending Now</string>
+    <string name="recently_played">Recently Played</string>
+    <string name="your_queue">Your Queue</string>
+    <string name="see_all">See all</string>
+    <string name="unknown_artist">Unknown Artist</string>
+    <string name="nothing_playing">Nothing playing</string>
+    <string name="notification_channel_name">LumiOne Playback</string>
+    <string name="notification_channel_desc">Music playback controls</string>
+    <string name="action_play">Play</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_next">Next</string>
+    <string name="action_prev">Previous</string>
+    <string name="error_playback">Playback error</string>
+</resources>

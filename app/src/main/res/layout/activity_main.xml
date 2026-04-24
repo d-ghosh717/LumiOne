@@ -1,0 +1,460 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0E0E10"
+    android:fitsSystemWindows="true">
+
+    <!-- ─── Main Content ──────────────────────────────────────────────────── -->
+    <ScrollView
+        android:id="@+id/mainScrollView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_above="@+id/miniPlayerCard"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingTop="56dp">
+
+            <!-- Header -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="20dp"
+                android:paddingBottom="16dp"
+                android:gravity="center_vertical">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Good Evening,"
+                        android:textColor="#A1A1AA"
+                        android:textSize="13sp"
+                        android:fontFamily="@font/manrope" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="LumiOne 🎵"
+                        android:textColor="#F9F5F8"
+                        android:textSize="24sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans"
+                        android:letterSpacing="-0.02" />
+                </LinearLayout>
+
+                <ImageButton
+                    android:id="@+id/btnSettings"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_icon_button"
+                    android:src="@drawable/ic_settings"
+                    android:tint="#BA9EFF" />
+            </LinearLayout>
+
+            <!-- Search Bar -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginHorizontal="20dp"
+                android:layout_marginBottom="24dp">
+
+                <EditText
+                    android:id="@+id/searchInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_search_field"
+                    android:hint="Search artists, songs, playlists…"
+                    android:hintTextColor="#767577"
+                    android:textColor="#F9F5F8"
+                    android:textSize="15sp"
+                    android:fontFamily="@font/manrope"
+                    android:paddingStart="52dp"
+                    android:paddingEnd="16dp"
+                    android:inputType="text"
+                    android:imeOptions="actionSearch"
+                    android:singleLine="true" />
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginStart="16dp"
+                    android:src="@drawable/ic_search"
+                    android:tint="#53DDFC" />
+            </FrameLayout>
+
+            <!-- Section Label -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="20dp"
+                android:paddingBottom="12dp"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🔥 Trending Now"
+                    android:textColor="#F9F5F8"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:fontFamily="@font/plus_jakarta_sans" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="See all"
+                    android:textColor="#BA9EFF"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/manrope" />
+            </LinearLayout>
+
+            <!-- Search Results / Trending List -->
+            <ListView
+                android:id="@+id/searchResultsList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:divider="@null"
+                android:dividerHeight="0dp"
+                android:scrollbars="none"
+                android:nestedScrollingEnabled="false"
+                android:paddingBottom="16dp" />
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- ─── Mini Player ───────────────────────────────────────────────────── -->
+    <LinearLayout
+        android:id="@+id/miniPlayerCard"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:layout_above="@+id/bottomNavBar"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_mini_player"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:visibility="gone"
+        android:elevation="8dp">
+
+        <!-- Album Art -->
+        <ImageView
+            android:id="@+id/albumArtView"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_album_art_placeholder"
+            android:scaleType="centerCrop" />
+
+        <!-- Track Info -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="12dp">
+
+            <TextView
+                android:id="@+id/miniTrackTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Nothing playing"
+                android:textColor="#F9F5F8"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:singleLine="true"
+                android:ellipsize="marquee" />
+
+            <TextView
+                android:id="@+id/miniArtistName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="—"
+                android:textColor="#A1A1AA"
+                android:textSize="12sp"
+                android:fontFamily="@font/manrope"
+                android:singleLine="true" />
+        </LinearLayout>
+
+        <!-- Controls -->
+        <ImageButton
+            android:id="@+id/miniPlayPauseBtn"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_play_button_mini"
+            android:src="@drawable/ic_play"
+            android:tint="#F9F5F8" />
+    </LinearLayout>
+
+    <!-- Mini progress line -->
+    <ProgressBar
+        android:id="@+id/miniProgressBar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:layout_above="@+id/bottomNavBar"
+        android:progressDrawable="@drawable/progress_gradient"
+        android:max="1000"
+        android:progress="0" />
+
+    <!-- ─── Bottom Nav Bar ────────────────────────────────────────────────── -->
+    <LinearLayout
+        android:id="@+id/bottomNavBar"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:layout_alignParentBottom="true"
+        android:background="@drawable/bg_bottom_nav"
+        android:orientation="horizontal"
+        android:gravity="center">
+
+        <ImageButton android:id="@+id/navHome"
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:src="@drawable/ic_home" android:tint="#BA9EFF"
+            android:background="@null" />
+
+        <ImageButton android:id="@+id/navSearch"
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:src="@drawable/ic_search" android:tint="#767577"
+            android:background="@null" />
+
+        <ImageButton android:id="@+id/navLibrary"
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:src="@drawable/ic_library" android:tint="#767577"
+            android:background="@null" />
+
+        <ImageButton android:id="@+id/navProfile"
+            android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:src="@drawable/ic_profile" android:tint="#767577"
+            android:background="@null" />
+    </LinearLayout>
+
+    <!-- ─── Full Player Overlay ───────────────────────────────────────────── -->
+    <FrameLayout
+        android:id="@+id/fullPlayerContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#0E0E10"
+        android:visibility="gone"
+        android:alpha="0"
+        android:elevation="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:paddingTop="48dp"
+            android:paddingHorizontal="24dp"
+            android:paddingBottom="32dp">
+
+            <!-- Top Bar -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp">
+
+                <ImageButton
+                    android:id="@+id/btnBack"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_centerVertical="true"
+                    android:src="@drawable/ic_arrow_down"
+                    android:tint="#F9F5F8"
+                    android:background="@null" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_centerInParent="true"
+                    android:text="NOW PLAYING"
+                    android:textColor="#A1A1AA"
+                    android:textSize="12sp"
+                    android:letterSpacing="0.15"
+                    android:fontFamily="@font/manrope" />
+
+                <ImageButton
+                    android:id="@+id/btnMore"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:src="@drawable/ic_more_vert"
+                    android:tint="#F9F5F8"
+                    android:background="@null" />
+            </RelativeLayout>
+
+            <!-- Spacer -->
+            <View android:layout_width="match_parent" android:layout_height="32dp" />
+
+            <!-- Album Art -->
+            <ImageView
+                android:id="@+id/albumArtView"
+                android:layout_width="280dp"
+                android:layout_height="280dp"
+                android:layout_gravity="center_horizontal"
+                android:background="@drawable/bg_album_art_large"
+                android:scaleType="centerCrop" />
+
+            <!-- Spacer -->
+            <View android:layout_width="match_parent" android:layout_height="28dp" />
+
+            <!-- Track Info + Like -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_toStartOf="@+id/btnLike"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/fullTrackTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Select a track"
+                        android:textColor="#F9F5F8"
+                        android:textSize="22sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans"
+                        android:letterSpacing="-0.02"
+                        android:singleLine="true"
+                        android:ellipsize="end" />
+
+                    <TextView
+                        android:id="@+id/fullArtistName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="—"
+                        android:textColor="#BA9EFF"
+                        android:textSize="15sp"
+                        android:fontFamily="@font/manrope" />
+                </LinearLayout>
+
+                <ImageButton
+                    android:id="@+id/btnLike"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:src="@drawable/ic_heart"
+                    android:tint="#767577"
+                    android:background="@null" />
+            </RelativeLayout>
+
+            <!-- Spacer -->
+            <View android:layout_width="match_parent" android:layout_height="24dp" />
+
+            <!-- SeekBar -->
+            <SeekBar
+                android:id="@+id/fullSeekBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:progressDrawable="@drawable/seekbar_gradient"
+                android:thumb="@drawable/seekbar_thumb"
+                android:max="1000" />
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp">
+
+                <TextView
+                    android:id="@+id/fullCurrentTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0:00"
+                    android:textColor="#767577"
+                    android:textSize="12sp"
+                    android:fontFamily="@font/manrope" />
+
+                <TextView
+                    android:id="@+id/fullDuration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:text="0:00"
+                    android:textColor="#767577"
+                    android:textSize="12sp"
+                    android:fontFamily="@font/manrope" />
+            </RelativeLayout>
+
+            <!-- Spacer -->
+            <View android:layout_width="match_parent" android:layout_height="24dp" />
+
+            <!-- Controls Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:weightSum="5">
+
+                <ImageButton
+                    android:id="@+id/btnShuffle"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_weight="1"
+                    android:src="@drawable/ic_shuffle"
+                    android:tint="#F9F5F8"
+                    android:alpha="0.4"
+                    android:background="@null" />
+
+                <ImageButton
+                    android:id="@+id/btnPrev"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_weight="1"
+                    android:src="@drawable/ic_skip_prev"
+                    android:tint="#F9F5F8"
+                    android:background="@null" />
+
+                <ImageButton
+                    android:id="@+id/fullPlayPauseBtn"
+                    android:layout_width="72dp"
+                    android:layout_height="72dp"
+                    android:layout_weight="1"
+                    android:src="@drawable/ic_play"
+                    android:tint="#F9F5F8"
+                    android:background="@drawable/bg_play_button_large"
+                    android:elevation="4dp" />
+
+                <ImageButton
+                    android:id="@+id/btnNext"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_weight="1"
+                    android:src="@drawable/ic_skip_next"
+                    android:tint="#F9F5F8"
+                    android:background="@null" />
+
+                <ImageButton
+                    android:id="@+id/btnRepeat"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_weight="1"
+                    android:src="@drawable/ic_repeat"
+                    android:tint="#F9F5F8"
+                    android:alpha="0.4"
+                    android:background="@null" />
+
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+
+</RelativeLayout>

@@ -7,12 +7,15 @@ const fs = require('fs');
 const https = require('https');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
-// Serve the web frontend — access at http://localhost:3000
+app.get('/', (req, res) => {
+  res.send('LumiOne backend running');
+});
+
 const webPath = path.join(__dirname, '..', 'web');
 app.use(express.static(webPath));
 
@@ -21,7 +24,6 @@ function getYtDlpPath() {
     const candidates = [
         'yt-dlp',  // If on PATH
     ];
-    
     if (process.platform === 'win32') {
         candidates.unshift('yt-dlp.exe');
         // Common pip install locations on Windows
@@ -36,7 +38,7 @@ function getYtDlpPath() {
             path.join(home, 'AppData', 'Roaming', 'Python', 'Python312', 'Scripts', 'yt-dlp.exe'),
         ];
         for (const p of pipPaths) {
-            try { if (fs.existsSync(p)) { console.log(`[yt-dlp] Found at: ${p}`); return p; } } catch {}
+            try { if (fs.existsSync(p)) { return p; } } catch {}
         }
     }
     return candidates[0];
@@ -62,6 +64,7 @@ app.get('/api/search', async (req, res) => {
         '--default-search', 'ytsearch',
     ];
 
+    console.log("Running yt-dlp...");
     const proc = spawn(ytdlp(), args);
     let output = '';
     let errorOutput = '';
@@ -101,16 +104,16 @@ app.get('/api/search', async (req, res) => {
                 })
                 .filter(Boolean);
 
-            res.json({ results });
+            return res.json({ results });
         } catch (e) {
             console.error('Parse error:', e);
-            res.status(500).json({ error: 'Failed to parse results' });
+            return res.status(500).json({ error: 'Failed to parse results' });
         }
     });
 
     proc.on('error', (err) => {
-        console.error('yt-dlp spawn error:', err);
-        res.status(500).json({ error: 'yt-dlp not found. Install it: pip install yt-dlp' });
+        console.error("yt-dlp error:", err);
+        return res.status(500).json({ error: 'yt-dlp not found' });
     });
 });
 
@@ -124,6 +127,8 @@ async function getDirectUrl(videoId) {
     return new Promise((resolve) => {
         const url = `https://www.youtube.com/watch?v=${videoId}`;
         const urlArgs = [url, '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio', '--get-url', '--no-warnings', '--no-playlist'];
+        
+        console.log("Running yt-dlp...");
         const urlProc = spawn(ytdlp(), urlArgs);
         let urlOutput = '';
         urlProc.stdout.on('data', (data) => { urlOutput += data.toString(); });
@@ -135,6 +140,10 @@ async function getDirectUrl(videoId) {
             } else {
                 resolve(null);
             }
+        });
+        urlProc.on('error', (err) => {
+            console.error("yt-dlp error:", err);
+            resolve(null);
         });
     });
 }
@@ -164,16 +173,18 @@ app.get('/api/stream/:videoId', async (req, res) => {
         proxyRes.pipe(res);
     }).on('error', (err) => {
         console.error('[PROXY] Error:', err);
-        if (!res.headersSent) pipeAudio(videoId, res);
+        if (!res.headersSent) {
+            return pipeAudio(videoId, res);
+        }
     });
 });
 
 // ─── API: Pipe Audio (always pipe mode, no redirect) ────────────
 // Used as fallback when redirect mode fails (e.g. CORS, CDN issues)
-app.get('/api/pipe/:videoId', async (req, res) => {
+app.get('/api/pipe/:videoId', (req, res) => {
     const { videoId } = req.params;
     console.log(`[PIPE] Request for: ${videoId}`);
-    pipeAudio(videoId, res);
+    return pipeAudio(videoId, res);
 });
 
 // ─── Shared pipe logic ──────────────────────────────────────────
@@ -188,6 +199,7 @@ function pipeAudio(videoId, res) {
         '--no-check-certificates',
     ];
 
+    console.log("Running yt-dlp...");
     const pipeProc = spawn(ytdlp(), pipeArgs);
     let headersSent = false;
     let hasData = false;
@@ -214,8 +226,8 @@ function pipeAudio(videoId, res) {
     });
 
     pipeProc.on('error', (err) => {
-        console.error('[PIPE] error:', err.message);
-        if (!headersSent) res.status(500).json({ error: 'Stream failed' });
+        console.error("yt-dlp error:", err);
+        if (!headersSent) return res.status(500).json({ error: 'Stream failed' });
     });
 
     res.on('close', () => {
@@ -226,7 +238,7 @@ function pipeAudio(videoId, res) {
     pipeProc.on('close', (pipeCode) => {
         if (pipeCode !== 0 && !hasData) {
             console.error(`[PIPE] Failed with code ${pipeCode}`);
-            if (!headersSent) res.status(500).json({ error: 'Could not extract audio' });
+            if (!headersSent) return res.status(500).json({ error: 'Could not extract audio' });
         }
         if (headersSent) res.end();
         console.log(`[PIPE] Stream ended for: ${videoId}`);
@@ -258,6 +270,8 @@ app.get('/api/info/:videoId', async (req, res) => {
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
     const args = [url, '--dump-json', '--no-warnings', '--no-playlist'];
+    
+    console.log("Running yt-dlp...");
     const proc = spawn(ytdlp(), args);
     let output = '';
 
@@ -268,7 +282,7 @@ app.get('/api/info/:videoId', async (req, res) => {
 
         try {
             const data = JSON.parse(output);
-            res.json({
+            return res.json({
                 id: data.id,
                 title: data.title,
                 artist: data.channel || data.uploader,
@@ -279,8 +293,13 @@ app.get('/api/info/:videoId', async (req, res) => {
                 description: data.description?.substring(0, 200),
             });
         } catch (e) {
-            res.status(500).json({ error: 'Failed to parse info' });
+            return res.status(500).json({ error: 'Failed to parse info' });
         }
+    });
+
+    proc.on('error', (err) => {
+        console.error("yt-dlp error:", err);
+        if (!res.headersSent) return res.status(500).json({ error: 'yt-dlp not found' });
     });
 });
 
@@ -295,6 +314,7 @@ app.get('/api/trending', async (req, res) => {
         '--no-check-certificates',
     ];
 
+    console.log("Running yt-dlp...");
     const proc = spawn(ytdlp(), args);
     let output = '';
     let errorOutput = '';
@@ -302,7 +322,7 @@ app.get('/api/trending', async (req, res) => {
     // Kill after 20s to avoid hanging
     const killTimer = setTimeout(() => {
         proc.kill();
-        if (!res.headersSent) res.json({ results: [] });
+        if (!res.headersSent) return res.json({ results: [] });
     }, 20000);
 
     proc.stdout.on('data', (data) => { output += data.toString(); });
@@ -328,21 +348,22 @@ app.get('/api/trending', async (req, res) => {
                     } catch { return null; }
                 })
                 .filter(Boolean);
-            res.json({ results });
+            return res.json({ results });
         } catch (e) {
-            res.json({ results: [] });
+            return res.json({ results: [] });
         }
     });
 
     proc.on('error', (err) => {
+        console.error("yt-dlp error:", err);
         clearTimeout(killTimer);
-        if (!res.headersSent) res.json({ results: [] });
+        if (!res.headersSent) return res.json({ results: [] });
     });
 });
 
 // ─── API: Health Check ──────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', ytdlp: ytdlp(), timestamp: new Date().toISOString() });
+    return res.json({ status: 'ok', ytdlp: ytdlp(), timestamp: new Date().toISOString() });
 });
 
 // ─── Helper ─────────────────────────────────────────────────────
@@ -353,33 +374,7 @@ function formatDuration(seconds) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-// ─── Get local IP for display ───────────────────────────────────
-function getLocalIP() {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-            if (iface.family === 'IPv4' && !iface.internal) {
-                return iface.address;
-            }
-        }
-    }
-    return '127.0.0.1';
-}
-
-// ─── Keep server alive ──────────────────────────────────────────
-process.on('uncaughtException', err => console.error('[UNCAUGHT]', err.message));
-process.on('unhandledRejection', err => console.error('[UNHANDLED]', err?.message || err));
-
 // ─── Start Server ───────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
-    const localIP = getLocalIP();
-    console.log('');
-    console.log('╔══════════════════════════════════════════════════╗');
-    console.log('║           🎵 LumiOne Server v3.0                ║');
-    console.log('╠══════════════════════════════════════════════════╣');
-    console.log(`║  Web UI:  http://localhost:${PORT}                  ║`);
-    console.log(`║  Network: http://${localIP}:${PORT}            ║`);
-    console.log('║  yt-dlp:  ' + ytdlp().substring(0, 38).padEnd(38) + ' ║');
-    console.log('╚══════════════════════════════════════════════════╝');
-    console.log('');
+  console.log(`Server running on port ${PORT}`);
 });

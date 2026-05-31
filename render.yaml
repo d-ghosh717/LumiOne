@@ -4,7 +4,7 @@ services:
     env: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && pip install -r requirements.txt
+    buildCommand: npm install && pip3 install -U yt-dlp
     startCommand: npm start
     envVars:
       - key: NODE_ENV

@@ -12,7 +12,9 @@
 'use strict';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const API_BASE = window.location.origin || 'http://localhost:3000';
+const API_BASE = (window.location.origin && window.location.origin !== 'null' && !window.location.origin.startsWith('file://'))
+  ? window.location.origin
+  : 'http://localhost:3000';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let audioPlayer = null;   // HTML5 Audio element

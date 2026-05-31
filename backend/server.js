@@ -61,37 +61,128 @@ function getBotBypassArgs() {
     ];
 }
 
+// ─── Invidious API Search ───────────────────────────────────────
+// Invidious is an open-source YouTube frontend with a public JSON API.
+// It works from cloud/datacenter IPs — unlike yt-dlp ytsearch which
+// gets throttled/blocked by YouTube on Render's servers.
+//
+// We try multiple public instances in order; if one is down we move on.
+const INVIDIOUS_INSTANCES = [
+    'https://inv.nadeko.net',
+    'https://invidious.privacyredirect.com',
+    'https://yt.artemislena.eu',
+    'https://invidious.nerdvpn.de',
+    'https://invidious.perennialte.ch',
+];
+
+const https = require('https');
+
+function invidiousSearch(query, maxResults = 10) {
+    return new Promise((resolve) => {
+        const encoded = encodeURIComponent(query);
+        let tried = 0;
+
+        function tryNext() {
+            if (tried >= INVIDIOUS_INSTANCES.length) {
+                resolve(null); // all instances exhausted
+                return;
+            }
+            const instance = INVIDIOUS_INSTANCES[tried++];
+            const url = `${instance}/api/v1/search?q=${encoded}&type=video&fields=videoId,title,author,lengthSeconds,videoThumbnails`;
+            console.log(`[SEARCH] Trying Invidious: ${instance}`);
+
+            const req = https.get(url, { timeout: 8000 }, (res) => {
+                let raw = '';
+                res.on('data', chunk => { raw += chunk; });
+                res.on('end', () => {
+                    try {
+                        const items = JSON.parse(raw);
+                        if (!Array.isArray(items) || items.length === 0) { tryNext(); return; }
+                        const results = items.slice(0, maxResults).map(v => ({
+                            id: v.videoId,
+                            title: v.title || 'Unknown Title',
+                            artist: v.author || 'Unknown Artist',
+                            thumbnail: (() => {
+                                const thumbs = v.videoThumbnails || [];
+                                const med = thumbs.find(t => t.quality === 'medium' || t.quality === 'high');
+                                return (med || thumbs[0])?.url || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
+                            })(),
+                            duration: v.lengthSeconds || 0,
+                            durationFormatted: formatDuration(v.lengthSeconds),
+                            views: v.viewCount || 0,
+                            url: `https://www.youtube.com/watch?v=${v.videoId}`,
+                        }));
+                        console.log(`[SEARCH] Invidious OK: ${instance} (${results.length} results)`);
+                        resolve(results);
+                    } catch {
+                        tryNext();
+                    }
+                });
+            });
+            req.on('error', (err) => {
+                console.log(`[SEARCH] Invidious failed (${instance}): ${err.message}`);
+                tryNext();
+            });
+            req.on('timeout', () => {
+                req.destroy();
+                console.log(`[SEARCH] Invidious timeout: ${instance}`);
+                tryNext();
+            });
+        }
+
+        tryNext();
+    });
+}
+
 // ─── API: Search YouTube ────────────────────────────────────────
 app.get('/api/search', async (req, res) => {
     const query = req.query.q;
     if (!query) return res.status(400).json({ error: 'Query parameter "q" is required' });
 
+    console.log(`[SEARCH] Query: "${query}"`);
+
+    // 1. Try Invidious API (fast, works on cloud IPs, no yt-dlp needed)
+    const invResults = await invidiousSearch(query);
+    if (invResults && invResults.length > 0) {
+        return res.json({ results: invResults });
+    }
+
+    // 2. Fallback: yt-dlp ytsearch (slower, may fail on cloud IPs but worth trying)
+    console.log('[SEARCH] Invidious failed, falling back to yt-dlp...');
     const args = [
         `ytsearch10:${query} song`,
         '--dump-json',
         '--flat-playlist',
         '--no-warnings',
         '--default-search', 'ytsearch',
+        '--extractor-args', 'youtube:player_client=android,web',
+        '--no-check-certificates',
     ];
 
-    console.log('[SEARCH] Running yt-dlp search...');
     const proc = spawn(ytdlp(), args);
     let output = '';
     let errorOutput = '';
+    let done = false;
+
+    // Kill after 25s to avoid Render request timeout
+    const killTimer = setTimeout(() => {
+        if (!done) { proc.kill(); if (!res.headersSent) res.status(504).json({ error: 'Search timed out' }); }
+    }, 25000);
 
     proc.stdout.on('data', (data) => { output += data.toString(); });
     proc.stderr.on('data', (data) => { errorOutput += data.toString(); });
 
     proc.on('close', (code) => {
+        done = true;
+        clearTimeout(killTimer);
+        if (res.headersSent) return;
         if (code !== 0) {
-            console.error('[SEARCH] yt-dlp error:', errorOutput.substring(0, 300));
-            return res.status(500).json({ error: 'Search failed', details: errorOutput });
+            console.error('[SEARCH] yt-dlp fallback error:', errorOutput.substring(0, 300));
+            return res.status(500).json({ error: 'Search failed' });
         }
         try {
-            const results = output
-                .trim()
-                .split('\n')
-                .filter(line => line.trim())
+            const results = output.trim().split('\n')
+                .filter(l => l.trim())
                 .map(line => {
                     try {
                         const data = JSON.parse(line);
@@ -105,23 +196,25 @@ app.get('/api/search', async (req, res) => {
                             duration: data.duration || 0,
                             durationFormatted: formatDuration(data.duration),
                             views: data.view_count || 0,
-                            url: data.url || data.webpage_url || `https://www.youtube.com/watch?v=${data.id}`,
+                            url: `https://www.youtube.com/watch?v=${data.id}`,
                         };
-                    } catch (e) { return null; }
+                    } catch { return null; }
                 })
                 .filter(Boolean);
             return res.json({ results });
         } catch (e) {
-            console.error('[SEARCH] Parse error:', e);
             return res.status(500).json({ error: 'Failed to parse results' });
         }
     });
 
     proc.on('error', (err) => {
+        done = true;
+        clearTimeout(killTimer);
         console.error('[SEARCH] spawn error:', err);
-        return res.status(500).json({ error: 'yt-dlp not found' });
+        if (!res.headersSent) return res.status(500).json({ error: 'yt-dlp not found' });
     });
 });
+
 
 // ─── API: Stream Audio (pipe mode — works on Render) ────────────
 // We always pipe through yt-dlp instead of redirecting to the CDN URL.
@@ -289,61 +382,64 @@ app.get('/api/info/:videoId', async (req, res) => {
 });
 
 // ─── API: Trending ───────────────────────────────────────────────
+// Uses Invidious trending (music category) instead of yt-dlp search,
+// which gets blocked from cloud IPs.
 app.get('/api/trending', async (req, res) => {
-    const query = req.query.genre || 'Hindi pop hits 2024';
-    const args = [
-        `ytsearch8:${query}`,
-        '--dump-json',
-        '--flat-playlist',
-        '--no-warnings',
-        '--no-check-certificates',
-    ];
+    const genre = req.query.genre || null;
+    console.log('[TRENDING] Fetching via Invidious...');
 
-    console.log('[TRENDING] Running yt-dlp...');
-    const proc = spawn(ytdlp(), args);
-    let output = '';
-    let errorOutput = '';
-
-    const killTimer = setTimeout(() => {
-        proc.kill();
-        if (!res.headersSent) return res.json({ results: [] });
-    }, 20000);
-
-    proc.stdout.on('data', (data) => { output += data.toString(); });
-    proc.stderr.on('data', (data) => { errorOutput += data.toString(); });
-
-    proc.on('close', (code) => {
-        clearTimeout(killTimer);
-        if (res.headersSent) return;
-        try {
-            const results = output.trim().split('\n')
-                .filter(l => l.trim())
-                .map(line => {
-                    try {
-                        const data = JSON.parse(line);
-                        return {
-                            id: data.id,
-                            title: data.title || 'Unknown',
-                            artist: data.channel || data.uploader || 'Unknown',
-                            thumbnail: `https://i.ytimg.com/vi/${data.id}/hqdefault.jpg`,
-                            duration: data.duration || 0,
-                            durationFormatted: formatDuration(data.duration),
-                        };
-                    } catch { return null; }
-                })
-                .filter(Boolean);
-            return res.json({ results });
-        } catch (e) {
-            return res.json({ results: [] });
+    // Try Invidious trending endpoint first (music category, India region)
+    if (!genre) {
+        for (const instance of INVIDIOUS_INSTANCES) {
+            try {
+                const results = await new Promise((resolve, reject) => {
+                    const url = `${instance}/api/v1/trending?type=music&region=IN&fields=videoId,title,author,lengthSeconds,videoThumbnails`;
+                    const req2 = https.get(url, { timeout: 8000 }, (r) => {
+                        let raw = '';
+                        r.on('data', c => { raw += c; });
+                        r.on('end', () => {
+                            try {
+                                const items = JSON.parse(raw);
+                                if (!Array.isArray(items) || !items.length) { reject(new Error('empty')); return; }
+                                resolve(items.slice(0, 12).map(v => ({
+                                    id: v.videoId,
+                                    title: v.title || 'Unknown',
+                                    artist: v.author || 'Unknown',
+                                    thumbnail: (() => {
+                                        const thumbs = v.videoThumbnails || [];
+                                        const t = thumbs.find(t => t.quality === 'medium') || thumbs[0];
+                                        return t?.url || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
+                                    })(),
+                                    duration: v.lengthSeconds || 0,
+                                    durationFormatted: formatDuration(v.lengthSeconds),
+                                })));
+                            } catch { reject(new Error('parse error')); }
+                        });
+                    });
+                    req2.on('error', reject);
+                    req2.on('timeout', () => { req2.destroy(); reject(new Error('timeout')); });
+                });
+                console.log(`[TRENDING] OK from ${instance}: ${results.length} items`);
+                return res.json({ results });
+            } catch (err) {
+                console.log(`[TRENDING] Instance ${instance} failed: ${err.message}`);
+            }
         }
-    });
+    }
 
-    proc.on('error', (err) => {
-        console.error('[TRENDING] spawn error:', err);
-        clearTimeout(killTimer);
-        if (!res.headersSent) return res.json({ results: [] });
-    });
+    // Fallback: use invidiousSearch with a genre query
+    const query = genre || 'top Hindi pop songs 2024';
+    console.log(`[TRENDING] Falling back to Invidious search: "${query}"`);
+    const results = await invidiousSearch(query, 12);
+    if (results && results.length > 0) {
+        return res.json({ results });
+    }
+
+    // Last resort: return empty (better than hanging)
+    console.error('[TRENDING] All sources failed, returning empty');
+    return res.json({ results: [] });
 });
+
 
 // ─── API: Health Check ───────────────────────────────────────────
 app.get('/api/health', (req, res) => {

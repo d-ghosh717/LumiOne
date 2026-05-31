@@ -4,7 +4,13 @@ services:
     env: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && pip3 install -U yt-dlp
+    buildCommand: >
+      npm install &&
+      mkdir -p ./bin &&
+      curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ./bin/yt-dlp &&
+      chmod +x ./bin/yt-dlp &&
+      echo "yt-dlp version:" &&
+      ./bin/yt-dlp --version
     startCommand: npm start
     envVars:
       - key: NODE_ENV

@@ -14,10 +14,17 @@ const webPath = path.join(__dirname, '..', 'web');
 app.use(express.static(webPath));
 
 // ─── Helper: Get yt-dlp binary path ────────────────────────────
+// Priority order:
+//   1. ./bin/yt-dlp  — downloaded by Render build command via curl (no pip needed)
+//   2. system PATH   — works locally if yt-dlp is installed globally
+//   3. Windows pip install locations — for local Windows dev
 function getYtDlpPath() {
-    const candidates = ['yt-dlp'];
+    // 1. Check local ./bin/ directory first (Render deployment)
+    const localBin = path.join(__dirname, 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
+    try { if (fs.existsSync(localBin)) { console.log('[yt-dlp] Using local binary:', localBin); return localBin; } } catch {}
+
+    // 2. Windows: check common pip install locations for local dev
     if (process.platform === 'win32') {
-        candidates.unshift('yt-dlp.exe');
         const home = process.env.USERPROFILE || process.env.HOME || '';
         const pipPaths = [
             path.join(home, 'AppData', 'Local', 'Packages', 'PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0', 'LocalCache', 'local-packages', 'Python311', 'Scripts', 'yt-dlp.exe'),
@@ -28,10 +35,12 @@ function getYtDlpPath() {
             path.join(home, 'AppData', 'Roaming', 'Python', 'Python312', 'Scripts', 'yt-dlp.exe'),
         ];
         for (const p of pipPaths) {
-            try { if (fs.existsSync(p)) return p; } catch {}
+            try { if (fs.existsSync(p)) { return p; } } catch {}
         }
     }
-    return candidates[0];
+
+    // 3. Fall back to system PATH
+    return 'yt-dlp';
 }
 
 let resolvedYtDlpPath = null;

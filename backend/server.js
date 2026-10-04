@@ -361,6 +361,7 @@ function pipeAudio(videoId, req, res) {
     let headersSent = false;
     let hasData = false;
     let finished = false;
+    let stderrOutput = '';
 
     proc.stdout.on('data', (chunk) => {
         if (finished) return;
@@ -382,6 +383,7 @@ function pipeAudio(videoId, req, res) {
 
     proc.stderr.on('data', (data) => {
         const msg = data.toString();
+        stderrOutput += msg;
         // Only log non-progress lines
         if (!msg.includes('[download]') && !msg.includes('ETA') && !msg.includes('%')) {
             console.error(`[PIPE] stderr (${videoId}):`, msg.substring(0, 200));
@@ -408,7 +410,9 @@ function pipeAudio(videoId, req, res) {
     proc.on('close', (code) => {
         finished = true;
         if (!hasData) {
-            console.error(`[PIPE] yt-dlp exited with code ${code} and no data for: ${videoId}`);
+            console.error(`[PIPE] yt-dlp failed for ${videoId}`);
+            console.error(`[PIPE] exit code: ${code}`);
+            console.error(`[PIPE] stderr:\n${stderrOutput.trim()}`);
             if (!headersSent && !res.headersSent) {
                 return res.status(500).json({ error: 'Could not extract audio — video may be unavailable or geo-blocked' });
             }

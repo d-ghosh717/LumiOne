@@ -2,7 +2,9 @@ package com.lumione.player.ui
 
 import androidx.lifecycle.*
 import com.lumione.player.queue.QueueManager
+import com.lumione.player.queue.RepeatMode
 import com.lumione.player.queue.Track
+import com.lumione.player.service.PlaybackService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,7 +16,7 @@ data class PlayerUiState(
     val durationMs: Long = 0L,
     val bufferedPct: Int = 0,
     val shuffleEnabled: Boolean = false,
-    val repeatMode: QueueManager.RepeatMode = QueueManager.RepeatMode.NONE,
+    val repeatMode: RepeatMode = RepeatMode.NONE,
     val isPlayerReady: Boolean = false,
     val errorCode: Int? = null
 )
@@ -76,7 +78,7 @@ class PlaybackViewModel : ViewModel(), PlaybackService.PlaybackServiceListener {
         _uiState.value = _uiState.value.copy(shuffleEnabled = enabled)
     }
 
-    fun syncRepeat(mode: QueueManager.RepeatMode) {
+    fun syncRepeat(mode: RepeatMode) {
         _uiState.value = _uiState.value.copy(repeatMode = mode)
     }
 

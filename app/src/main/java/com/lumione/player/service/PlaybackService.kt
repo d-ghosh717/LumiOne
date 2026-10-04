@@ -1,41 +1,35 @@
 package com.lumione.player.service
 
-import android.annotation.SuppressLint
 import android.app.*
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 import android.os.*
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.JavascriptInterface
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat as MediaNotificationCompat
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.lumione.player.R
-import com.lumione.player.bridge.AndroidBridge
 import com.lumione.player.queue.QueueManager
 import com.lumione.player.queue.Track
 import com.lumione.player.ui.MainActivity
 
 /**
- * LumiOne Foreground Playback Service
+ * LumiOne Foreground Playback Service powered by Android Media3 / ExoPlayer.
  *
- * Architecture:
- * - Runs as a Foreground Service with MediaSession for lock-screen controls
- * - Owns the hidden WebView hosting the YouTube IFrame Player API
- * - Receives events from JS → AndroidBridge → here
- * - Exposes IBinder (LumiBinder) for Activity binding
+ * Handles:
+ * - Native ExoPlayer playback with automatic audio focus & noisy audio management
+ * - Foreground service lifecycle with wake locks for screen-off / background playback
+ * - MediaSessionCompat with lock-screen & notification transport controls
+ * - In-memory track queue and progress synchronization
  */
-class PlaybackService : Service(), AndroidBridge.PlayerEventListener {
+class PlaybackService : Service() {
 
     companion object {
         const val CHANNEL_ID = "lumione_playback"
@@ -47,7 +41,7 @@ class PlaybackService : Service(), AndroidBridge.PlayerEventListener {
         const val ACTION_STOP = "com.lumione.STOP"
     }
 
-    // ─── Public state (observed by Activity) ─────────────────────────────────
+    // ─── Public State (Observed by Activity) ─────────────────────────────────
     val queueManager = QueueManager()
     var isPlaying = false
         private set
@@ -58,12 +52,24 @@ class PlaybackService : Service(), AndroidBridge.PlayerEventListener {
     var bufferedPct = 0
         private set
 
-    // ─── Internal components ──────────────────────────────────────────────────
-    private lateinit var webView: WebView
+    // ─── Internal Components ──────────────────────────────────────────────────
+    private lateinit var player: ExoPlayer
     private lateinit var mediaSession: MediaSessionCompat
-    private lateinit var audioManager: AudioManager
-    private var audioFocusRequest: AudioFocusRequest? = null
     private var serviceListener: PlaybackServiceListener? = null
+
+    private val progressHandler = Handler(Looper.getMainLooper())
+    private val progressRunnable = object : Runnable {
+        override fun run() {
+            if (::player.isInitialized && isPlaying) {
+                currentPositionMs = player.currentPosition.coerceAtLeast(0L)
+                durationMs = player.duration.coerceAtLeast(0L)
+                bufferedPct = player.bufferedPercentage
+                serviceListener?.onProgressUpdate(currentPositionMs, durationMs, bufferedPct)
+                updatePlaybackState()
+                progressHandler.postDelayed(this, 500)
+            }
+        }
+    }
 
     interface PlaybackServiceListener {
         fun onTrackChanged(track: Track?)
@@ -79,14 +85,13 @@ class PlaybackService : Service(), AndroidBridge.PlayerEventListener {
 
     private val binder = LumiBinder()
 
-    // ─── Service lifecycle ────────────────────────────────────────────────────
+    // ─── Service Lifecycle ────────────────────────────────────────────────────
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        setupAudioManager()
         setupMediaSession()
-        setupWebView()
+        setupPlayer()
         startForeground(NOTIFICATION_ID, buildNotification())
     }
 
@@ -104,9 +109,12 @@ class PlaybackService : Service(), AndroidBridge.PlayerEventListener {
     }
 
     override fun onDestroy() {
+        stopProgressPolling()
+        if (::player.isInitialized) {
+            player.stop()
+            player.release()
+        }
         mediaSession.release()
-        webView.destroy()
-        abandonAudioFocus()
         super.onDestroy()
     }
 
@@ -114,85 +122,101 @@ class PlaybackService : Service(), AndroidBridge.PlayerEventListener {
         serviceListener = listener
     }
 
-    // ─── WebView Setup ────────────────────────────────────────────────────────
+    // ─── ExoPlayer Setup ──────────────────────────────────────────────────────
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun setupWebView() {
-        webView = WebView(applicationContext).apply {
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                mediaPlaybackRequiresUserGesture = false
-                allowFileAccess = true
-                allowContentAccess = true
-                cacheMode = WebSettings.LOAD_DEFAULT
-                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                userAgentString = "Mozilla/5.0 (Linux; Android 11; Pixel 5) " +
-                        "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                        "Chrome/120.0.0.0 Mobile Safari/537.36"
-            }
+    private fun setupPlayer() {
+        val audioAttributes = AudioAttributes.Builder()
+            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+            .setUsage(C.USAGE_MEDIA)
+            .build()
 
-            // Inject the Android bridge
-            addJavascriptInterface(
-                AndroidBridge(this@PlaybackService),
-                "Android"
-            )
+        player = ExoPlayer.Builder(applicationContext)
+            .setAudioAttributes(audioAttributes, true) // Handles Audio Focus automatically
+            .setWakeMode(C.WAKE_MODE_NETWORK)          // Network & CPU wake lock during playback
+            .setHandleAudioBecomingNoisy(true)         // Auto-pause when headphones unplugged
+            .build()
 
-            webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    super.onPageFinished(view, url)
-                    // Page is ready; IFrame API will call onYouTubeIframeAPIReady
-                }
-
-                override fun onReceivedError(
-                    view: WebView?,
-                    errorCode: Int,
-                    description: String?,
-                    failingUrl: String?
-                ) {
-                    // Attempt reload on error
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        view?.reload()
-                    }, 3000)
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                when (playbackState) {
+                    Player.STATE_READY -> {
+                        durationMs = player.duration.coerceAtLeast(0L)
+                        serviceListener?.onPlayerReady()
+                        updatePlaybackState()
+                    }
+                    Player.STATE_ENDED -> {
+                        if (queueManager.hasNext()) {
+                            skipNext()
+                        } else {
+                            setPlaybackState(false)
+                        }
+                    }
+                    Player.STATE_BUFFERING -> {}
+                    Player.STATE_IDLE -> {}
                 }
             }
 
-            webChromeClient = WebChromeClient()
-        }
+            override fun onIsPlayingChanged(playing: Boolean) {
+                setPlaybackState(playing)
+                if (playing) {
+                    startProgressPolling()
+                } else {
+                    stopProgressPolling()
+                }
+            }
 
-        // Load the bundled player HTML from assets
-        webView.loadUrl("file:///android_asset/player.html")
+            override fun onPlayerError(error: PlaybackException) {
+                serviceListener?.onError(error.errorCode)
+                // Auto-skip failed track gracefully after brief delay if next track exists
+                if (queueManager.hasNext()) {
+                    progressHandler.postDelayed({ skipNext() }, 1500)
+                } else {
+                    setPlaybackState(false)
+                }
+            }
+        })
     }
 
-    // ─── Playback Control (Android → JS) ─────────────────────────────────────
+    // ─── Playback Controls ────────────────────────────────────────────────────
 
     fun loadAndPlay(track: Track) {
-        requestAudioFocus()
-        evalJs("LumiPlayer.loadVideo('${track.videoId}', true)")
+        if (!::player.isInitialized) return
+        val streamUrl = track.getEffectiveStreamUrl()
+        val mediaItem = MediaItem.Builder()
+            .setUri(streamUrl)
+            .setMediaId(track.trackId)
+            .build()
+
+        player.setMediaItem(mediaItem)
+        player.prepare()
+        player.play()
         updateMediaSessionMetadata(track)
         notifyTrackChanged(track)
         updateNotification()
     }
 
     fun loadAndQueue(track: Track) {
-        evalJs("LumiPlayer.loadVideo('${track.videoId}', false)")
-        updateMediaSessionMetadata(track)
+        queueManager.addToQueue(track)
     }
 
     fun pausePlayback() {
-        evalJs("LumiPlayer.pause()")
-        setPlaybackState(false)
+        if (::player.isInitialized) {
+            player.pause()
+        }
     }
 
     fun resumePlayback() {
-        requestAudioFocus()
-        evalJs("LumiPlayer.play()")
+        if (::player.isInitialized) {
+            player.play()
+        }
     }
 
     fun seekTo(positionMs: Long) {
-        evalJs("LumiPlayer.seek($positionMs)")
-        currentPositionMs = positionMs
-        updatePlaybackState()
+        if (::player.isInitialized) {
+            player.seekTo(positionMs)
+            currentPositionMs = positionMs
+            updatePlaybackState()
+        }
     }
 
     fun skipNext() {
@@ -210,86 +234,20 @@ class PlaybackService : Service(), AndroidBridge.PlayerEventListener {
     }
 
     fun setVolume(level: Int) {
-        evalJs("LumiPlayer.setVolume($level)")
-    }
-
-    private fun evalJs(script: String) {
-        Handler(Looper.getMainLooper()).post {
-            webView.evaluateJavascript(script, null)
+        if (::player.isInitialized) {
+            player.volume = (level.coerceIn(0, 100) / 100f)
         }
     }
 
-    // ─── AndroidBridge.PlayerEventListener ───────────────────────────────────
+    // ─── Progress Polling ─────────────────────────────────────────────────────
 
-    override fun onReady() {
-        serviceListener?.onPlayerReady()
-        // Auto-start current track if any
-        queueManager.currentTrack()?.let { loadAndPlay(it) }
+    private fun startProgressPolling() {
+        progressHandler.removeCallbacks(progressRunnable)
+        progressHandler.post(progressRunnable)
     }
 
-    override fun onEnd() {
-        if (queueManager.hasNext()) {
-            skipNext()
-        } else {
-            setPlaybackState(false)
-        }
-    }
-
-    override fun onPlaying() = setPlaybackState(true)
-    override fun onPaused() = setPlaybackState(false)
-    override fun onBuffering() {}
-
-    override fun onError(code: Int) {
-        serviceListener?.onError(code)
-        // Retry after 2s on certain errors
-        if (code == 150 || code == 100) {
-            Handler(Looper.getMainLooper()).postDelayed({
-                // Reload the WebView player engine entirely
-                webView.reload()
-            }, 2000)
-        } else if (code == 101 || code == 5) {
-            skipNext()
-        }
-    }
-
-    override fun onProgress(currentMs: Long, durationMs: Long, bufferedPct: Int) {
-        this.currentPositionMs = currentMs
-        this.durationMs = durationMs
-        this.bufferedPct = bufferedPct
-        serviceListener?.onProgressUpdate(currentMs, durationMs, bufferedPct)
-        updatePlaybackState()
-    }
-
-    // ─── Audio Focus ──────────────────────────────────────────────────────────
-
-    private fun setupAudioManager() {
-        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    }
-
-    private fun requestAudioFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val attrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                .build()
-            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(attrs)
-                .setOnAudioFocusChangeListener { focus ->
-                    when (focus) {
-                        AudioManager.AUDIOFOCUS_LOSS -> pausePlayback()
-                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> pausePlayback()
-                        AudioManager.AUDIOFOCUS_GAIN -> resumePlayback()
-                    }
-                }
-                .build()
-            audioManager.requestAudioFocus(audioFocusRequest!!)
-        }
-    }
-
-    private fun abandonAudioFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
-        }
+    private fun stopProgressPolling() {
+        progressHandler.removeCallbacks(progressRunnable)
     }
 
     // ─── MediaSession ─────────────────────────────────────────────────────────
@@ -376,10 +334,17 @@ class PlaybackService : Service(), AndroidBridge.PlayerEventListener {
 
         fun pendingAction(action: String, icon: Int, label: String): NotificationCompat.Action {
             val intent = Intent(this, PlaybackService::class.java).apply { this.action = action }
-            val pi = PendingIntent.getService(
-                this, action.hashCode(), intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+            val pi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                PendingIntent.getForegroundService(
+                    this, action.hashCode(), intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            } else {
+                PendingIntent.getService(
+                    this, action.hashCode(), intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            }
             return NotificationCompat.Action(icon, label, pi)
         }
 

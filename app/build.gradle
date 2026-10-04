@@ -49,7 +49,13 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
-    // Media Session (lock-screen controls)
+    // Media3 / ExoPlayer & MediaSession
+    implementation 'androidx.media3:media3-exoplayer:1.2.1'
+    implementation 'androidx.media3:media3-session:1.2.1'
+    implementation 'androidx.media3:media3-common:1.2.1'
+    implementation 'androidx.media3:media3-ui:1.2.1'
+
+    // Media Session Compat (for legacy lock-screen and notification controls)
     implementation 'androidx.media:media:1.7.0'
 
     // Lifecycle & Coroutines
@@ -64,4 +70,9 @@ dependencies {
 
     // MultiDex
     implementation 'androidx.multidex:multidex:2.0.1'
+
+    // Testing
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'androidx.arch.core:core-testing:2.2.0'
+    testImplementation 'org.json:json:20231013'
 }

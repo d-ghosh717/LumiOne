@@ -4,12 +4,20 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 
 data class Track(
-    val videoId: String,
+    val videoId: String, // Track ID (Audius track ID)
     val title: String,
     val artist: String,
     val durationMs: Long = 0L,
-    val thumbnailUrl: String = ""
-)
+    val thumbnailUrl: String = "",
+    val streamUrl: String = ""
+) {
+    val trackId: String get() = videoId
+
+    fun getEffectiveStreamUrl(): String {
+        if (streamUrl.isNotBlank()) return streamUrl
+        return "https://api.audius.co/v1/tracks/$videoId/stream?app_name=LumiOne"
+    }
+}
 
 enum class RepeatMode { NONE, ONE, ALL }
 
@@ -29,7 +37,7 @@ class QueueManager {
 
     fun setQueue(tracks: List<Track>, startIndex: Int = 0) {
         _queue.value = tracks
-        _currentIndex.value = startIndex.coerceIn(0, tracks.lastIndex)
+        _currentIndex.value = if (tracks.isNotEmpty()) startIndex.coerceIn(0, tracks.lastIndex) else -1
         history.clear()
     }
 
@@ -116,7 +124,7 @@ class QueueManager {
             repeatMode == RepeatMode.ONE -> ci
             shuffleEnabled -> {
                 val candidates = queue.indices.filter { it != ci }
-                candidates.randomOrNull()
+                candidates.randomOrNull() ?: ci
             }
             ci < queue.lastIndex -> ci + 1
             repeatMode == RepeatMode.ALL -> 0

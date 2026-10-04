@@ -7,7 +7,7 @@
         <item name="colorOnSecondary">#004B58</item>
         <item name="colorSurface">#19191C</item>
         <item name="colorOnSurface">#F9F5F8</item>
-        <item name="colorBackground">#0E0E10</item>
+        <item name="android:colorBackground">#0E0E10</item>
         <item name="colorOnBackground">#F9F5F8</item>
         <item name="android:windowBackground">#0E0E10</item>
         <item name="android:statusBarColor">@android:color/transparent</item>

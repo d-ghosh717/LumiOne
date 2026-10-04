@@ -74,7 +74,7 @@
                     android:layout_height="match_parent"
                     android:background="@drawable/bg_search_field"
                     android:hint="Search artists, songs, playlists…"
-                    android:hintTextColor="#767577"
+                    android:textColorHint="#767577"
                     android:textColor="#F9F5F8"
                     android:textSize="15sp"
                     android:fontFamily="@font/manrope"
@@ -151,7 +151,7 @@
 
         <!-- Album Art -->
         <ImageView
-            android:id="@+id/albumArtView"
+            android:id="@+id/miniAlbumArtView"
             android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="@drawable/bg_album_art_placeholder"
@@ -302,7 +302,7 @@
 
             <!-- Album Art -->
             <ImageView
-                android:id="@+id/albumArtView"
+                android:id="@+id/fullAlbumArtView"
                 android:layout_width="280dp"
                 android:layout_height="280dp"
                 android:layout_gravity="center_horizontal"

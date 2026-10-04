@@ -1,14 +1,14 @@
 package com.lumione.player.ui
 
 import android.content.*
-import android.graphics.Bitmap
 import android.os.*
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.*
+import com.bumptech.glide.Glide
 import com.lumione.player.R
 import com.lumione.player.queue.QueueManager
+import com.lumione.player.queue.RepeatMode
 import com.lumione.player.queue.Track
 import com.lumione.player.search.SearchEngine
 import com.lumione.player.search.SearchResult
@@ -30,6 +30,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private lateinit var miniArtistName: TextView
     private lateinit var miniPlayPauseBtn: ImageButton
     private lateinit var miniProgressBar: ProgressBar
+    private lateinit var miniAlbumArtView: ImageView
     private lateinit var fullPlayerContainer: View
     private lateinit var fullTrackTitle: TextView
     private lateinit var fullArtistName: TextView
@@ -37,12 +38,12 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private lateinit var fullSeekBar: SeekBar
     private lateinit var fullCurrentTime: TextView
     private lateinit var fullDuration: TextView
+    private lateinit var fullAlbumArtView: ImageView
     private lateinit var btnNext: ImageButton
     private lateinit var btnPrev: ImageButton
     private lateinit var btnShuffle: ImageButton
     private lateinit var btnRepeat: ImageButton
     private lateinit var btnBack: ImageButton
-    private lateinit var albumArtView: ImageView
     private lateinit var searchResultAdapter: SearchResultAdapter
 
     private val serviceConnection = object : ServiceConnection {
@@ -109,6 +110,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         miniArtistName = findViewById(R.id.miniArtistName)
         miniPlayPauseBtn = findViewById(R.id.miniPlayPauseBtn)
         miniProgressBar = findViewById(R.id.miniProgressBar)
+        miniAlbumArtView = findViewById(R.id.miniAlbumArtView)
         fullPlayerContainer = findViewById(R.id.fullPlayerContainer)
         fullTrackTitle = findViewById(R.id.fullTrackTitle)
         fullArtistName = findViewById(R.id.fullArtistName)
@@ -116,12 +118,12 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         fullSeekBar = findViewById(R.id.fullSeekBar)
         fullCurrentTime = findViewById(R.id.fullCurrentTime)
         fullDuration = findViewById(R.id.fullDuration)
+        fullAlbumArtView = findViewById(R.id.fullAlbumArtView)
         btnNext = findViewById(R.id.btnNext)
         btnPrev = findViewById(R.id.btnPrev)
         btnShuffle = findViewById(R.id.btnShuffle)
         btnRepeat = findViewById(R.id.btnRepeat)
         btnBack = findViewById(R.id.btnBack)
-        albumArtView = findViewById(R.id.albumArtView)
 
         searchResultAdapter = SearchResultAdapter(this, mutableListOf())
         searchResultsList.adapter = searchResultAdapter
@@ -171,26 +173,18 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     private fun loadTrendingTracks() {
         mainScope.launch {
-            val results = withContext(Dispatchers.IO) {
-                // Seed with popular requests for demo
-                listOf(
-                    SearchResult("dQw4w9WgXcQ", "Never Gonna Give You Up", "Rick Astley", 213000,
-                        "https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg"),
-                    SearchResult("y6120QOlsfU", "Sandstorm", "Darude", 229000,
-                        "https://img.youtube.com/vi/y6120QOlsfU/mqdefault.jpg"),
-                    SearchResult("ktvTqknDobU", "Radioactive", "Imagine Dragons", 187000,
-                        "https://img.youtube.com/vi/ktvTqknDobU/mqdefault.jpg"),
-                    SearchResult("1G4isv_Fylg", "Losing It", "FISHER", 374000,
-                        "https://img.youtube.com/vi/1G4isv_Fylg/mqdefault.jpg")
-                )
+            val results = withContext(Dispatchers.IO) { searchEngine.getTrending() }
+            if (results.isNotEmpty()) {
+                searchResultAdapter.updateResults(results)
             }
-            searchResultAdapter.updateResults(results)
         }
     }
 
     private fun buildQueueFromResults(results: List<SearchResult>, startAt: Int): List<Track> {
-        val reordered = results.subList(startAt, results.size) +
-                        results.subList(0, startAt)
+        if (results.isEmpty()) return emptyList()
+        val safeIndex = startAt.coerceIn(0, results.lastIndex)
+        val reordered = results.subList(safeIndex, results.size) +
+                        results.subList(0, safeIndex)
         return reordered.map { it.toTrack() }
     }
 
@@ -216,9 +210,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         btnRepeat.setOnClickListener {
             val svc = playbackService ?: return@setOnClickListener
             svc.queueManager.repeatMode = when (svc.queueManager.repeatMode) {
-                QueueManager.RepeatMode.NONE -> QueueManager.RepeatMode.ALL
-                QueueManager.RepeatMode.ALL -> QueueManager.RepeatMode.ONE
-                QueueManager.RepeatMode.ONE -> QueueManager.RepeatMode.NONE
+                RepeatMode.NONE -> RepeatMode.ALL
+                RepeatMode.ALL -> RepeatMode.ONE
+                RepeatMode.ONE -> RepeatMode.NONE
             }
             updateRepeatIcon()
         }
@@ -266,7 +260,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     private fun updateRepeatIcon() {
         val svc = playbackService ?: return
-        btnRepeat.alpha = if (svc.queueManager.repeatMode != QueueManager.RepeatMode.NONE) 1.0f else 0.4f
+        btnRepeat.alpha = if (svc.queueManager.repeatMode != RepeatMode.NONE) 1.0f else 0.4f
     }
 
     // ─── PlaybackServiceListener ──────────────────────────────────────────────
@@ -290,7 +284,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     override fun onPlayerReady() {}
 
     override fun onError(code: Int) {
-        Toast.makeText(this, "Playback error: $code", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Playback notice: $code", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateTrackUI(track: Track) {
@@ -299,6 +293,17 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         fullTrackTitle.text = track.title
         fullArtistName.text = track.artist
         miniPlayerCard.visibility = View.VISIBLE
+
+        if (track.thumbnailUrl.isNotBlank()) {
+            Glide.with(this)
+                .load(track.thumbnailUrl)
+                .placeholder(R.drawable.bg_album_art_placeholder)
+                .into(miniAlbumArtView)
+            Glide.with(this)
+                .load(track.thumbnailUrl)
+                .placeholder(R.drawable.bg_album_art_large)
+                .into(fullAlbumArtView)
+        }
     }
 
     private fun updatePlayPauseIcons(playing: Boolean) {
@@ -337,6 +342,14 @@ class SearchResultAdapter(
         view.findViewById<TextView>(R.id.resultArtist).text = result.artist
         view.findViewById<TextView>(R.id.resultDuration).text = formatMs(result.durationMs)
 
+        val trackImg = view.findViewById<ImageView>(R.id.resultThumbnail)
+        if (trackImg != null && result.thumbnailUrl.isNotBlank()) {
+            Glide.with(context)
+                .load(result.thumbnailUrl)
+                .placeholder(R.drawable.bg_album_art_placeholder)
+                .into(trackImg)
+        }
+
         return view
     }
 
@@ -351,5 +364,6 @@ fun SearchResult.toTrack() = Track(
     title = title,
     artist = artist,
     durationMs = durationMs,
-    thumbnailUrl = thumbnailUrl
+    thumbnailUrl = thumbnailUrl,
+    streamUrl = streamUrl
 )

@@ -182,7 +182,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onError(errorCode: Int) {
-                Toast.makeText(this@MainActivity, "YouTube Notice: $errorCode", Toast.LENGTH_SHORT).show()
+                val currentTrack = queueManager.currentTrack()
+                val nextTrack = queueManager.nextTrack()
+                if (nextTrack != null && nextTrack.videoId != currentTrack?.videoId) {
+                    Toast.makeText(this@MainActivity, "Video restricted (Code $errorCode). Trying next result...", Toast.LENGTH_SHORT).show()
+                    playTrack(nextTrack)
+                } else {
+                    Toast.makeText(this@MainActivity, "This YouTube upload can't be played inside LumiOne. Try another result.", Toast.LENGTH_LONG).show()
+                }
             }
         })
     }

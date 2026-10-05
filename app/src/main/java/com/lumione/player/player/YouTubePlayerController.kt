@@ -60,7 +60,7 @@ class YouTubePlayerController(private val context: Context) {
         }
 
         val htmlContent = buildPlayerHtml()
-        targetWebView.loadDataWithBaseURL("https://www.youtube.com", htmlContent, "text/html", "UTF-8", null)
+        targetWebView.loadDataWithBaseURL("https://lumione.app", htmlContent, "text/html", "UTF-8", null)
     }
 
     private fun buildPlayerHtml(): String {
@@ -69,6 +69,7 @@ class YouTubePlayerController(private val context: Context) {
         <html>
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+          <meta name="referrer" content="strict-origin-when-cross-origin">
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             html, body { width: 100%; height: 100%; background: #08050F; overflow: hidden; display: flex; align-items: center; justify-content: center; }
@@ -100,7 +101,7 @@ class YouTubePlayerController(private val context: Context) {
                   'modestbranding': 1,
                   'iv_load_policy': 3,
                   'enablejsapi': 1,
-                  'origin': 'https://www.youtube.com'
+                  'origin': 'https://lumione.app'
                 },
                 events: {
                   'onReady': onPlayerReady,

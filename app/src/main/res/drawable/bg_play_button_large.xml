@@ -1,10 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="oval">
-    <gradient
-        android:type="radial"
-        android:gradientRadius="50%"
-        android:startColor="#BA9EFF"
-        android:centerColor="#7C3AED"
-        android:endColor="#53DDFC" />
-</shape>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#40FFFFFF">
+    <item>
+        <layer-list>
+            <!-- Soft outer purple glow ring -->
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="#33A855F7" />
+                    <size android:width="76dp" android:height="76dp" />
+                </shape>
+            </item>
+            <!-- Base physical gradient circle -->
+            <item android:top="2dp" android:bottom="2dp" android:left="2dp" android:right="2dp">
+                <shape android:shape="oval">
+                    <gradient
+                        android:type="linear"
+                        android:angle="135"
+                        android:startColor="#C084FC"
+                        android:centerColor="#9333EA"
+                        android:endColor="#581C87" />
+                    <stroke android:width="1.5dp" android:color="#80DDD6FE" />
+                </shape>
+            </item>
+            <!-- Top glossy glass highlight -->
+            <item android:top="4dp" android:bottom="36dp" android:left="14dp" android:right="14dp">
+                <shape android:shape="oval">
+                    <gradient
+                        android:type="linear"
+                        android:angle="270"
+                        android:startColor="#66FFFFFF"
+                        android:endColor="#00FFFFFF" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</ripple>

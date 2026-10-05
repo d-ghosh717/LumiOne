@@ -5,6 +5,8 @@ import android.os.*
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.lumione.player.R
 import com.lumione.player.queue.QueueManager
@@ -24,7 +26,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     // ─── Views ────────────────────────────────────────────────────────────────
     private lateinit var searchInput: EditText
-    private lateinit var searchResultsList: ListView
+    private lateinit var searchResultsList: RecyclerView
+    private lateinit var sectionTitle: TextView
+    private lateinit var btnSeeAll: TextView
     private lateinit var miniPlayerCard: View
     private lateinit var miniTrackTitle: TextView
     private lateinit var miniArtistName: TextView
@@ -44,7 +48,10 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private lateinit var btnShuffle: ImageButton
     private lateinit var btnRepeat: ImageButton
     private lateinit var btnBack: ImageButton
-    private lateinit var searchResultAdapter: SearchResultAdapter
+    private lateinit var btnSettings: ImageButton
+    private lateinit var btnLike: ImageButton
+    private var isLiked = false
+    private lateinit var trackAdapter: TrackAdapter
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -105,6 +112,8 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private fun bindViews() {
         searchInput = findViewById(R.id.searchInput)
         searchResultsList = findViewById(R.id.searchResultsList)
+        sectionTitle = findViewById(R.id.sectionTitle)
+        btnSeeAll = findViewById(R.id.btnSeeAll)
         miniPlayerCard = findViewById(R.id.miniPlayerCard)
         miniTrackTitle = findViewById(R.id.miniTrackTitle)
         miniArtistName = findViewById(R.id.miniArtistName)
@@ -124,9 +133,23 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         btnShuffle = findViewById(R.id.btnShuffle)
         btnRepeat = findViewById(R.id.btnRepeat)
         btnBack = findViewById(R.id.btnBack)
+        btnSettings = findViewById(R.id.btnSettings)
+        btnLike = findViewById(R.id.btnLike)
 
-        searchResultAdapter = SearchResultAdapter(this, mutableListOf())
-        searchResultsList.adapter = searchResultAdapter
+        trackAdapter = TrackAdapter(mutableListOf()) { result, position ->
+            val track = result.toTrack()
+            playbackService?.let { svc ->
+                svc.queueManager.setQueue(
+                    buildQueueFromResults(trackAdapter.results, position),
+                    0
+                )
+                svc.loadAndPlay(track)
+            }
+            showFullPlayer()
+        }
+        searchResultsList.layoutManager = LinearLayoutManager(this)
+        searchResultsList.isNestedScrollingEnabled = false
+        searchResultsList.adapter = trackAdapter
     }
 
     // ─── Service ──────────────────────────────────────────────────────────────
@@ -145,37 +168,35 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     private fun setupSearchUI() {
         searchInput.setOnEditorActionListener { _, _, _ ->
-            performSearch(searchInput.text.toString())
+            val query = searchInput.text.toString().trim()
+            if (query.isNotBlank()) {
+                performSearch(query)
+            } else {
+                loadTrendingTracks()
+            }
             true
         }
 
-        searchResultsList.setOnItemClickListener { _, _, position, _ ->
-            val result = searchResultAdapter.getItem(position) ?: return@setOnItemClickListener
-            val track = result.toTrack()
-            playbackService?.let { svc ->
-                svc.queueManager.setQueue(
-                    buildQueueFromResults(searchResultAdapter.results, position),
-                    0
-                )
-                svc.loadAndPlay(track)
-            }
-            showFullPlayer()
+        btnSeeAll.setOnClickListener {
+            loadTrendingTracks()
         }
     }
 
     private fun performSearch(query: String) {
         if (query.isBlank()) return
+        sectionTitle.text = "Results for \"$query\""
         mainScope.launch {
             val results = withContext(Dispatchers.IO) { searchEngine.search(query) }
-            searchResultAdapter.updateResults(results)
+            trackAdapter.updateResults(results)
         }
     }
 
     private fun loadTrendingTracks() {
+        sectionTitle.text = "🔥 Trending on Audius"
         mainScope.launch {
             val results = withContext(Dispatchers.IO) { searchEngine.getTrending() }
             if (results.isNotEmpty()) {
-                searchResultAdapter.updateResults(results)
+                trackAdapter.updateResults(results)
             }
         }
     }
@@ -192,8 +213,23 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     private fun setupPlayerUI() {
         // Mini player click → open full player
-        miniPlayerCard.setOnClickListener { showFullPlayer() }
+        val openFullPlayer = View.OnClickListener { showFullPlayer() }
+        miniPlayerCard.setOnClickListener(openFullPlayer)
+        miniAlbumArtView.setOnClickListener(openFullPlayer)
+        miniTrackTitle.setOnClickListener(openFullPlayer)
+        miniArtistName.setOnClickListener(openFullPlayer)
         btnBack.setOnClickListener { hideFullPlayer() }
+
+        btnSettings.setOnClickListener {
+            Toast.makeText(this, "LumiOne Music • Streamed natively from Audius", Toast.LENGTH_SHORT).show()
+        }
+
+        btnLike.setOnClickListener {
+            isLiked = !isLiked
+            btnLike.setColorFilter(
+                if (isLiked) getColor(R.color.accent_fuchsia) else getColor(R.color.primary_lavender)
+            )
+        }
 
         miniPlayPauseBtn.setOnClickListener { togglePlayPause() }
         fullPlayPauseBtn.setOnClickListener { togglePlayPause() }
@@ -242,14 +278,13 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     private fun showFullPlayer() {
+        fullPlayerContainer.alpha = 1f
         fullPlayerContainer.visibility = View.VISIBLE
-        fullPlayerContainer.animate().alpha(1f).duration = 200
+        fullPlayerContainer.bringToFront()
     }
 
     private fun hideFullPlayer() {
-        fullPlayerContainer.animate().alpha(0f).setDuration(200).withEndAction {
-            fullPlayerContainer.visibility = View.GONE
-        }
+        fullPlayerContainer.visibility = View.GONE
     }
 
     private fun syncUIWithService() {
@@ -266,7 +301,10 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     // ─── PlaybackServiceListener ──────────────────────────────────────────────
 
     override fun onTrackChanged(track: Track?) {
-        track?.let { updateTrackUI(it) }
+        track?.let {
+            updateTrackUI(it)
+            trackAdapter.setCurrentPlayingTrackId(it.videoId)
+        }
     }
 
     override fun onPlayStateChanged(playing: Boolean) {
@@ -320,12 +358,14 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 }
 
-// ─── Search Result Adapter ────────────────────────────────────────────────────
+// ─── Modern Track Adapter (RecyclerView) ──────────────────────────────────────
 
-class SearchResultAdapter(
-    context: Context,
-    val results: MutableList<SearchResult>
-) : ArrayAdapter<SearchResult>(context, 0, results) {
+class TrackAdapter(
+    val results: MutableList<SearchResult>,
+    private val onItemClick: (SearchResult, Int) -> Unit
+) : RecyclerView.Adapter<TrackAdapter.TrackViewHolder>() {
+
+    private var currentPlayingId: String? = null
 
     fun updateResults(newResults: List<SearchResult>) {
         results.clear()
@@ -333,29 +373,63 @@ class SearchResultAdapter(
         notifyDataSetChanged()
     }
 
-    override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-        val view = convertView ?: LayoutInflater.from(context)
-            .inflate(R.layout.item_search_result, parent, false)
-        val result = getItem(position) ?: return view
-
-        view.findViewById<TextView>(R.id.resultTitle).text = result.title
-        view.findViewById<TextView>(R.id.resultArtist).text = result.artist
-        view.findViewById<TextView>(R.id.resultDuration).text = formatMs(result.durationMs)
-
-        val trackImg = view.findViewById<ImageView>(R.id.resultThumbnail)
-        if (trackImg != null && result.thumbnailUrl.isNotBlank()) {
-            Glide.with(context)
-                .load(result.thumbnailUrl)
-                .placeholder(R.drawable.bg_album_art_placeholder)
-                .into(trackImg)
-        }
-
-        return view
+    fun setCurrentPlayingTrackId(id: String?) {
+        currentPlayingId = id
+        notifyDataSetChanged()
     }
 
-    private fun formatMs(ms: Long): String {
-        val sec = ms / 1000
-        return "%d:%02d".format(sec / 60, sec % 60)
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TrackViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_search_result, parent, false)
+        return TrackViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: TrackViewHolder, position: Int) {
+        val item = results[position]
+        holder.bind(item, item.videoId == currentPlayingId) {
+            onItemClick(item, position)
+        }
+    }
+
+    override fun getItemCount(): Int = results.size
+
+    class TrackViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val thumbnail: ImageView = itemView.findViewById(R.id.resultThumbnail)
+        private val title: TextView = itemView.findViewById(R.id.resultTitle)
+        private val artist: TextView = itemView.findViewById(R.id.resultArtist)
+        private val duration: TextView = itemView.findViewById(R.id.resultDuration)
+        private val playIcon: ImageView = itemView.findViewById(R.id.resultPlayIcon)
+        private val cardContainer: View = itemView.findViewById(R.id.trackCardContainer)
+
+        fun bind(result: SearchResult, isPlaying: Boolean, onClick: () -> Unit) {
+            title.text = result.title
+            artist.text = result.artist
+            duration.text = formatDuration(result.durationMs)
+
+            if (result.thumbnailUrl.isNotBlank()) {
+                Glide.with(itemView.context)
+                    .load(result.thumbnailUrl)
+                    .placeholder(R.drawable.bg_album_art_placeholder)
+                    .into(thumbnail)
+            } else {
+                thumbnail.setImageResource(R.drawable.bg_album_art_placeholder)
+            }
+
+            if (isPlaying) {
+                cardContainer.setBackgroundResource(R.drawable.bg_play_chip)
+                playIcon.setImageResource(R.drawable.ic_pause)
+            } else {
+                cardContainer.setBackgroundResource(R.drawable.bg_track_card)
+                playIcon.setImageResource(R.drawable.ic_play)
+            }
+
+            itemView.setOnClickListener { onClick() }
+        }
+
+        private fun formatDuration(ms: Long): String {
+            val sec = ms / 1000
+            return "%d:%02d".format(sec / 60, sec % 60)
+        }
     }
 }
 

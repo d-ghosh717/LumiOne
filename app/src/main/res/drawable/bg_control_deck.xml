@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Outer Soft Glow -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="38dp" />
+            <solid android:color="#1F1135" />
+        </shape>
+    </item>
+    <!-- Glass Control Pill Surface -->
+    <item
+        android:bottom="1.5dp"
+        android:left="1.5dp"
+        android:right="1.5dp"
+        android:top="1.5dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="36dp" />
+            <gradient
+                android:angle="270"
+                android:startColor="#251642"
+                android:endColor="#140B24"
+                android:type="linear" />
+            <stroke
+                android:width="1.5dp"
+                android:color="#40C084FC" />
+        </shape>
+    </item>
+    <!-- Subtle Inner Highlight Line -->
+    <item
+        android:left="20dp"
+        android:right="20dp"
+        android:top="3dp"
+        android:height="1dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="1dp" />
+            <solid android:color="#26FFFFFF" />
+        </shape>
+    </item>
+</layer-list>

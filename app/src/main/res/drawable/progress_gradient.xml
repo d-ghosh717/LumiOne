@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@android:id/background">
-        <shape>
-            <solid android:color="#2ABA9EFF" />
-            <corners android:radius="2dp" />
+        <shape android:shape="rectangle">
+            <solid android:color="#241938" />
         </shape>
     </item>
     <item android:id="@android:id/progress">
         <clip>
-            <shape>
+            <shape android:shape="rectangle">
                 <gradient
+                    android:type="linear"
                     android:angle="0"
-                    android:startColor="#BA9EFF"
-                    android:endColor="#53DDFC"
-                    android:type="linear" />
-                <corners android:radius="2dp" />
+                    android:startColor="#8B5CF6"
+                    android:centerColor="#A855F7"
+                    android:endColor="#C084FC" />
             </shape>
         </clip>
     </item>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Outer Glow / Shadow -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="32dp" />
+            <solid android:color="#1A0D2A" />
+        </shape>
+    </item>
+    <!-- Deck Base Surface -->
+    <item
+        android:bottom="2dp"
+        android:left="2dp"
+        android:right="2dp"
+        android:top="2dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="30dp" />
+            <gradient
+                android:angle="315"
+                android:startColor="#261642"
+                android:centerColor="#190F2C"
+                android:endColor="#11091E"
+                android:type="linear" />
+            <stroke
+                android:width="1.5dp"
+                android:color="#4DA855F7" />
+        </shape>
+    </item>
+    <!-- Inner Top Glass Highlight -->
+    <item
+        android:left="6dp"
+        android:right="6dp"
+        android:top="4dp"
+        android:height="1.5dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="2dp" />
+            <solid android:color="#33F0ABFC" />
+        </shape>
+    </item>
+</layer-list>

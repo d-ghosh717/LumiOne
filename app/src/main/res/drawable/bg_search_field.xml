@@ -1,6 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#1F1F22" />
-    <corners android:radius="52dp" />
-</shape>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Outer glow / border -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#261A3B" />
+            <stroke android:width="1.5dp" android:color="#40A855F7" />
+            <corners android:radius="28dp" />
+        </shape>
+    </item>
+    <!-- Inner glass surface -->
+    <item android:top="1dp" android:bottom="1dp" android:left="1dp" android:right="1dp">
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="270"
+                android:startColor="#2A1C42"
+                android:endColor="#181126" />
+            <corners android:radius="27dp" />
+        </shape>
+    </item>
+</layer-list>

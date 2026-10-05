@@ -1,17 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Glass background -->
+    <!-- Drop shadow / outer border -->
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#CC19191C" />
+            <solid android:color="#F218112C" />
+            <stroke android:width="1.5dp" android:color="#4DA855F7" />
             <corners android:radius="20dp" />
         </shape>
     </item>
-    <!-- Top highlight — simulates glass edge light -->
-    <item android:top="0dp" android:left="0dp" android:right="0dp" android:bottom="0dp">
+    <!-- Top glass edge highlight -->
+    <item android:top="1dp" android:left="1dp" android:right="1dp" android:bottom="1dp">
         <shape android:shape="rectangle">
-            <stroke android:width="1dp" android:color="#1AFFFFFF" />
-            <corners android:radius="20dp" />
+            <gradient
+                android:type="linear"
+                android:angle="270"
+                android:startColor="#26FFFFFF"
+                android:centerColor="#05FFFFFF"
+                android:endColor="#00FFFFFF"
+                android:centerY="0.5" />
+            <corners android:radius="19dp" />
         </shape>
     </item>
 </layer-list>

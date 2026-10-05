@@ -1,28 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Background Track -->
     <item android:id="@android:id/background">
-        <shape>
-            <solid android:color="#33FFFFFF" />
-            <corners android:radius="4dp" />
+        <shape android:shape="rectangle">
+            <solid android:color="#2B1E42" />
+            <corners android:radius="6dp" />
+            <size android:height="6dp" />
         </shape>
     </item>
+    <!-- Secondary / Buffer Progress -->
     <item android:id="@android:id/secondaryProgress">
         <clip>
-            <shape>
-                <solid android:color="#4DBA9EFF" />
-                <corners android:radius="4dp" />
+            <shape android:shape="rectangle">
+                <solid android:color="#4D8B5CF6" />
+                <corners android:radius="6dp" />
             </shape>
         </clip>
     </item>
+    <!-- Active Progress Gradient (Violet -> Fuchsia -> Purple) -->
     <item android:id="@android:id/progress">
         <clip>
-            <shape>
+            <shape android:shape="rectangle">
                 <gradient
+                    android:type="linear"
                     android:angle="0"
-                    android:startColor="#BA9EFF"
-                    android:endColor="#53DDFC"
-                    android:type="linear" />
-                <corners android:radius="4dp" />
+                    android:startColor="#8B5CF6"
+                    android:centerColor="#A855F7"
+                    android:endColor="#D946EF" />
+                <corners android:radius="6dp" />
             </shape>
         </clip>
     </item>

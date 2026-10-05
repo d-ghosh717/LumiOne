@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="60dp"
+    android:height="120dp"
+    android:viewportWidth="60"
+    android:viewportHeight="120">
+    <!-- Tone Arm Base / Pivot Dial -->
+    <path
+        android:fillColor="#3D2460"
+        android:pathData="M 44,16 m -14,0 a 14,14 0 1,0 28,0 a 14,14 0 1,0 -28,0" />
+    <path
+        android:fillColor="#8B5CF6"
+        android:pathData="M 44,16 m -8,0 a 8,8 0 1,0 16,0 a 8,8 0 1,0 -16,0" />
+    <path
+        android:fillColor="#DDD6FE"
+        android:pathData="M 44,16 m -3,0 a 3,3 0 1,0 6,0 a 3,3 0 1,0 -6,0" />
+    
+    <!-- Metallic Tone Arm Rod -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C084FC"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M 44,22 L 42,75 L 30,102" />
+    
+    <!-- Cartridge / Stylus Head -->
+    <path
+        android:fillColor="#E879F9"
+        android:pathData="M 27,98 L 33,105 L 29,112 L 23,105 Z" />
+    <!-- Stylus Needle Point -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 23,105 L 21,110 L 25,108 Z" />
+</vector>

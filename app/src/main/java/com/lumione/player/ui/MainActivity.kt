@@ -3,32 +3,44 @@ package com.lumione.player.ui
 import android.content.*
 import android.os.*
 import android.view.*
+import android.webkit.WebView
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.lumione.player.R
+import com.lumione.player.player.YouTubePlayerController
+import com.lumione.player.player.YouTubePlayerListener
 import com.lumione.player.queue.QueueManager
 import com.lumione.player.queue.RepeatMode
 import com.lumione.player.queue.Track
 import com.lumione.player.search.SearchEngine
 import com.lumione.player.search.SearchResult
-import com.lumione.player.service.PlaybackService
 import kotlinx.coroutines.*
 
-class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListener {
+class MainActivity : AppCompatActivity() {
 
-    private var playbackService: PlaybackService? = null
-    private var isBound = false
     private val searchEngine = SearchEngine()
+    private val queueManager = QueueManager()
     private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val youTubeController by lazy { YouTubePlayerController(this) }
 
     // ─── Views ────────────────────────────────────────────────────────────────
     private lateinit var searchInput: EditText
     private lateinit var searchResultsList: RecyclerView
     private lateinit var sectionTitle: TextView
     private lateinit var btnSeeAll: TextView
+    private lateinit var featuredMusicCard: View
+    private lateinit var featuredThumbnail: ImageView
+    private lateinit var featuredTitle: TextView
+    private lateinit var featuredArtist: TextView
+    private lateinit var btnFeaturedPlay: View
+    private lateinit var featuredPlayIcon: ImageView
+    private var featuredTrackResult: SearchResult? = null
+    private var allLoadedResults: List<SearchResult> = emptyList()
+
+    private lateinit var youtubeWebView: WebView
     private lateinit var miniPlayerCard: View
     private lateinit var miniTrackTitle: TextView
     private lateinit var miniArtistName: TextView
@@ -57,21 +69,6 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private var isLiked = false
     private lateinit var trackAdapter: TrackAdapter
 
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as PlaybackService.LumiBinder
-            playbackService = binder.getService()
-            playbackService?.setListener(this@MainActivity)
-            isBound = true
-            syncUIWithService()
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            playbackService = null
-            isBound = false
-        }
-    }
-
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,32 +80,16 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         )
 
         bindViews()
+        setupYouTubePlayer()
         setupSearchUI()
         setupPlayerUI()
         setupNavUI()
-        startAndBindService()
         loadTrendingTracks()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (!isBound) startAndBindService()
-    }
-
-    override fun onStop() {
-        super.onStop()
-        if (isBound) {
-            unbindService(serviceConnection)
-            isBound = false
-        }
     }
 
     override fun onDestroy() {
         mainScope.cancel()
-        if (isBound) {
-            playbackService?.setListener(null)
-            unbindService(serviceConnection)
-        }
+        youTubeController.destroy()
         super.onDestroy()
     }
 
@@ -119,6 +100,13 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         searchResultsList = findViewById(R.id.searchResultsList)
         sectionTitle = findViewById(R.id.sectionTitle)
         btnSeeAll = findViewById(R.id.btnSeeAll)
+        featuredMusicCard = findViewById(R.id.featuredMusicCard)
+        featuredThumbnail = findViewById(R.id.featuredThumbnail)
+        featuredTitle = findViewById(R.id.featuredTitle)
+        featuredArtist = findViewById(R.id.featuredArtist)
+        btnFeaturedPlay = findViewById(R.id.btnFeaturedPlay)
+        featuredPlayIcon = findViewById(R.id.featuredPlayIcon)
+        youtubeWebView = findViewById(R.id.youtubeWebView)
         miniPlayerCard = findViewById(R.id.miniPlayerCard)
         miniTrackTitle = findViewById(R.id.miniTrackTitle)
         miniArtistName = findViewById(R.id.miniArtistName)
@@ -145,15 +133,24 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         navLibrary = findViewById(R.id.navLibrary)
         navProfile = findViewById(R.id.navProfile)
 
-        trackAdapter = TrackAdapter(mutableListOf()) { result, position ->
-            val track = result.toTrack()
-            playbackService?.let { svc ->
-                svc.queueManager.setQueue(
-                    buildQueueFromResults(trackAdapter.results, position),
-                    0
-                )
-                svc.loadAndPlay(track)
+        // Featured Card Click → Play Featured
+        val playFeaturedAction = View.OnClickListener {
+            featuredTrackResult?.let { res ->
+                val track = res.toTrack()
+                val globalIndex = allLoadedResults.indexOfFirst { it.videoId == res.videoId }.coerceAtLeast(0)
+                queueManager.setQueue(buildQueueFromResults(allLoadedResults, globalIndex), 0)
+                playTrack(track)
+                showFullPlayer()
             }
+        }
+        featuredMusicCard.setOnClickListener(playFeaturedAction)
+        btnFeaturedPlay.setOnClickListener(playFeaturedAction)
+
+        trackAdapter = TrackAdapter(mutableListOf()) { result, _ ->
+            val track = result.toTrack()
+            val globalIndex = allLoadedResults.indexOfFirst { it.videoId == result.videoId }.coerceAtLeast(0)
+            queueManager.setQueue(buildQueueFromResults(allLoadedResults, globalIndex), 0)
+            playTrack(track)
             showFullPlayer()
         }
         searchResultsList.layoutManager = LinearLayoutManager(this)
@@ -161,34 +158,95 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         searchResultsList.adapter = trackAdapter
     }
 
-    // ─── Service ──────────────────────────────────────────────────────────────
+    private fun setupYouTubePlayer() {
+        youTubeController.initialize(youtubeWebView)
+        youTubeController.setListener(object : YouTubePlayerListener {
+            override fun onPlayerReady() {}
 
-    private fun startAndBindService() {
-        val intent = Intent(this, PlaybackService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+            override fun onPlayStateChanged(isPlaying: Boolean) {
+                updatePlayPauseIcons(isPlaying)
+            }
+
+            override fun onProgressUpdate(currentMs: Long, durationMs: Long) {
+                if (durationMs > 0) {
+                    val progress = ((currentMs * 1000) / durationMs).toInt()
+                    fullSeekBar.progress = progress
+                    miniProgressBar.progress = progress
+                }
+                fullCurrentTime.text = formatMs(currentMs)
+                fullDuration.text = formatMs(durationMs)
+            }
+
+            override fun onVideoEnded() {
+                queueManager.nextTrack()?.let { playTrack(it) }
+            }
+
+            override fun onError(errorCode: Int) {
+                Toast.makeText(this@MainActivity, "YouTube Notice: $errorCode", Toast.LENGTH_SHORT).show()
+            }
+        })
+    }
+
+    private fun playTrack(track: Track) {
+        updateTrackUI(track)
+        trackAdapter.setCurrentPlayingTrackId(track.videoId)
+        youTubeController.loadVideo(track.videoId)
     }
 
     // ─── Search UI ────────────────────────────────────────────────────────────
 
     private fun setupSearchUI() {
-        searchInput.setOnEditorActionListener { _, _, _ ->
+        val executeSearch: () -> Unit = {
             val query = searchInput.text.toString().trim()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            imm?.hideSoftInputFromWindow(searchInput.windowToken, 0)
             if (query.isNotBlank()) {
                 performSearch(query)
             } else {
                 loadTrendingTracks()
             }
+        }
+
+        var searchJob: Job? = null
+        searchInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                searchJob?.cancel()
+                val q = s?.toString()?.trim() ?: ""
+                if (q.isNotBlank()) {
+                    searchJob = mainScope.launch {
+                        delay(600)
+                        performSearch(q)
+                    }
+                } else {
+                    loadTrendingTracks()
+                }
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+
+        searchInput.setOnEditorActionListener { _, _, _ ->
+            executeSearch()
             true
         }
 
+        searchInput.setOnKeyListener { _, keyCode, event ->
+            if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_ENTER) {
+                executeSearch()
+                true
+            } else {
+                false
+            }
+        }
+
         btnSeeAll.setOnClickListener {
-            searchInput.setText("")
-            loadTrendingTracks()
+            if (allLoadedResults.isNotEmpty()) {
+                sectionTitle.text = "Complete Discovery Queue"
+                featuredMusicCard.visibility = View.GONE
+                trackAdapter.updateResults(allLoadedResults)
+            } else {
+                loadTrendingTracks()
+            }
         }
     }
 
@@ -197,7 +255,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         sectionTitle.text = "Results for \"$query\""
         mainScope.launch {
             val results = withContext(Dispatchers.IO) { searchEngine.search(query) }
-            trackAdapter.updateResults(results)
+            displayResults(results, isSearch = true)
         }
     }
 
@@ -206,9 +264,35 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         mainScope.launch {
             val results = withContext(Dispatchers.IO) { searchEngine.getTrending() }
             if (results.isNotEmpty()) {
-                trackAdapter.updateResults(results)
+                displayResults(results, isSearch = false)
             }
         }
+    }
+
+    private fun displayResults(results: List<SearchResult>, isSearch: Boolean) {
+        allLoadedResults = results
+        if (results.isEmpty()) {
+            featuredMusicCard.visibility = View.GONE
+            trackAdapter.updateResults(emptyList())
+            return
+        }
+
+        // Top track goes into Featured Card
+        val hero = results[0]
+        featuredTrackResult = hero
+        featuredTitle.text = hero.title
+        featuredArtist.text = hero.artist
+        if (hero.thumbnailUrl.isNotBlank()) {
+            Glide.with(this@MainActivity)
+                .load(hero.thumbnailUrl)
+                .placeholder(R.drawable.bg_album_art_placeholder)
+                .into(featuredThumbnail)
+        }
+        featuredMusicCard.visibility = View.VISIBLE
+
+        // Remaining tracks populate Discovery Stream
+        val streamItems = if (isSearch) results.drop(1) else results.drop(1).take(6)
+        trackAdapter.updateResults(streamItems)
     }
 
     private fun buildQueueFromResults(results: List<SearchResult>, startAt: Int): List<Track> {
@@ -222,7 +306,6 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     // ─── Player UI ────────────────────────────────────────────────────────────
 
     private fun setupPlayerUI() {
-        // Mini player click → open full player
         val openFullPlayer = View.OnClickListener { showFullPlayer() }
         miniPlayerCard.setOnClickListener(openFullPlayer)
         miniAlbumArtView.setOnClickListener(openFullPlayer)
@@ -231,7 +314,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         btnBack.setOnClickListener { hideFullPlayer() }
 
         btnSettings.setOnClickListener {
-            Toast.makeText(this, "LumiOne Music • Futuristic Audio Experience", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "LumiOne Music • YouTube IFrame Engine", Toast.LENGTH_SHORT).show()
         }
 
         btnLike.setOnClickListener {
@@ -244,18 +327,20 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         miniPlayPauseBtn.setOnClickListener { togglePlayPause() }
         fullPlayPauseBtn.setOnClickListener { togglePlayPause() }
 
-        btnNext.setOnClickListener { playbackService?.skipNext() }
-        btnPrev.setOnClickListener { playbackService?.skipPrevious() }
+        btnNext.setOnClickListener {
+            queueManager.nextTrack()?.let { playTrack(it) }
+        }
+        btnPrev.setOnClickListener {
+            queueManager.previousTrack()?.let { playTrack(it) }
+        }
 
         btnShuffle.setOnClickListener {
-            val svc = playbackService ?: return@setOnClickListener
-            svc.queueManager.shuffleEnabled = !svc.queueManager.shuffleEnabled
-            btnShuffle.alpha = if (svc.queueManager.shuffleEnabled) 1.0f else 0.4f
+            queueManager.shuffleEnabled = !queueManager.shuffleEnabled
+            btnShuffle.alpha = if (queueManager.shuffleEnabled) 1.0f else 0.4f
         }
 
         btnRepeat.setOnClickListener {
-            val svc = playbackService ?: return@setOnClickListener
-            svc.queueManager.repeatMode = when (svc.queueManager.repeatMode) {
+            queueManager.repeatMode = when (queueManager.repeatMode) {
                 RepeatMode.NONE -> RepeatMode.ALL
                 RepeatMode.ALL -> RepeatMode.ONE
                 RepeatMode.ONE -> RepeatMode.NONE
@@ -267,17 +352,17 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             var dragging = false
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser && dragging) {
-                    val svc = playbackService ?: return
-                    val target = (progress.toLong() * svc.durationMs) / 1000L
+                    val duration = youTubeController.getDurationMs()
+                    val target = (progress.toLong() * duration) / 1000L
                     fullCurrentTime.text = formatMs(target)
                 }
             }
             override fun onStartTrackingTouch(sb: SeekBar?) { dragging = true }
             override fun onStopTrackingTouch(sb: SeekBar?) {
                 dragging = false
-                val svc = playbackService ?: return
-                val target = (sb!!.progress.toLong() * svc.durationMs) / 1000L
-                svc.seekTo(target)
+                val duration = youTubeController.getDurationMs()
+                val target = (sb!!.progress.toLong() * duration) / 1000L
+                youTubeController.seekTo(target)
             }
         })
     }
@@ -292,16 +377,19 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             imm?.showSoftInput(searchInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         }
         navLibrary.setOnClickListener {
-            Toast.makeText(this, "Queue & Library: ${trackAdapter.itemCount} tracks ready", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Queue: ${allLoadedResults.size} tracks ready", Toast.LENGTH_SHORT).show()
         }
         navProfile.setOnClickListener {
-            Toast.makeText(this, "LumiOne Player v1.0 • Audius Native Engine", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "LumiOne Player v2.0 • YouTube Official IFrame API", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun togglePlayPause() {
-        val svc = playbackService ?: return
-        if (svc.isPlaying) svc.pausePlayback() else svc.resumePlayback()
+        if (youTubeController.isPlaying()) {
+            youTubeController.pause()
+        } else {
+            youTubeController.play()
+        }
     }
 
     private fun showFullPlayer() {
@@ -314,42 +402,16 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         fullPlayerContainer.visibility = View.GONE
     }
 
-    private fun syncUIWithService() {
-        val svc = playbackService ?: return
-        svc.queueManager.currentTrack()?.let { updateTrackUI(it) }
-        updatePlayPauseIcons(svc.isPlaying)
-    }
-
     private fun updateRepeatIcon() {
-        val svc = playbackService ?: return
-        btnRepeat.alpha = if (svc.queueManager.repeatMode != RepeatMode.NONE) 1.0f else 0.4f
+        btnRepeat.alpha = if (queueManager.repeatMode != RepeatMode.NONE) 1.0f else 0.4f
     }
 
-    // ─── PlaybackServiceListener ──────────────────────────────────────────────
-
-    override fun onTrackChanged(track: Track?) {
-        track?.let {
-            updateTrackUI(it)
-            trackAdapter.setCurrentPlayingTrackId(it.videoId)
+    override fun onBackPressed() {
+        if (fullPlayerContainer.visibility == View.VISIBLE) {
+            hideFullPlayer()
+        } else {
+            super.onBackPressed()
         }
-    }
-
-    override fun onPlayStateChanged(playing: Boolean) {
-        updatePlayPauseIcons(playing)
-    }
-
-    override fun onProgressUpdate(currentMs: Long, durationMs: Long, bufferedPct: Int) {
-        val progress = if (durationMs > 0) ((currentMs * 1000) / durationMs).toInt() else 0
-        fullSeekBar.progress = progress
-        miniProgressBar.progress = progress
-        fullCurrentTime.text = formatMs(currentMs)
-        fullDuration.text = formatMs(durationMs)
-    }
-
-    override fun onPlayerReady() {}
-
-    override fun onError(code: Int) {
-        Toast.makeText(this, "Playback notice: $code", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateTrackUI(track: Track) {
@@ -362,10 +424,12 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         if (track.thumbnailUrl.isNotBlank()) {
             Glide.with(this)
                 .load(track.thumbnailUrl)
+                .circleCrop()
                 .placeholder(R.drawable.bg_album_art_placeholder)
                 .into(miniAlbumArtView)
             Glide.with(this)
                 .load(track.thumbnailUrl)
+                .circleCrop()
                 .placeholder(R.drawable.bg_album_art_large)
                 .into(fullAlbumArtView)
         }
@@ -436,6 +500,7 @@ class TrackAdapter(
             if (result.thumbnailUrl.isNotBlank()) {
                 Glide.with(itemView.context)
                     .load(result.thumbnailUrl)
+                    .circleCrop()
                     .placeholder(R.drawable.bg_album_art_placeholder)
                     .into(thumbnail)
             } else {
@@ -446,7 +511,7 @@ class TrackAdapter(
                 cardContainer.setBackgroundResource(R.drawable.bg_active_track_pill)
                 playIcon.setImageResource(R.drawable.ic_pause)
             } else {
-                cardContainer.setBackgroundResource(R.drawable.bg_track_card)
+                cardContainer.setBackgroundResource(R.drawable.bg_track_item_normal)
                 playIcon.setImageResource(R.drawable.ic_play)
             }
 

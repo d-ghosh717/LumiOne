@@ -1,12 +1,11 @@
 {
   "name": "luminous-player-backend",
   "version": "1.0.0",
-  "description": "YouTube audio streaming backend for Luminous Player",
+  "description": "YouTube metadata and search backend for LumiOne Player",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js",
-    "postinstall": "mkdir -p ./bin && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ./bin/yt-dlp && chmod +x ./bin/yt-dlp"
+    "dev": "node server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

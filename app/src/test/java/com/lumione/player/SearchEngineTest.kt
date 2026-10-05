@@ -7,64 +7,86 @@ import org.junit.Test
 class SearchEngineTest {
 
     @Test
-    fun testParseAudiusTracksValidJson() {
+    fun testParseBackendResultsValidJson() {
         val json = """
             {
-              "data": [
+              "results": [
                 {
-                  "id": "D8m9w",
-                  "title": "Summer Vibes",
-                  "duration": 185,
-                  "user": {
-                    "name": "Audius Artist"
-                  },
-                  "artwork": {
-                    "150x150": "https://creatornode.audius.co/ipfs/Qm150",
-                    "480x480": "https://creatornode.audius.co/ipfs/Qm480"
-                  }
+                  "id": "60ItHLz5WEA",
+                  "title": "Alan Walker - Faded",
+                  "artist": "Alan Walker",
+                  "duration": 213,
+                  "durationFormatted": "3:33",
+                  "thumbnail": "https://i.ytimg.com/vi/60ItHLz5WEA/hqdefault.jpg"
                 },
                 {
-                  "id": "abc1234",
-                  "title": "Night Drive",
-                  "duration": 210,
-                  "user": {
-                    "name": "Synth Producer"
-                  },
-                  "artwork": {
-                    "150x150": "https://creatornode.audius.co/ipfs/Qm150_2"
-                  }
+                  "id": "4NRXx6U8ABQ",
+                  "title": "The Weeknd - Blinding Lights",
+                  "artist": "The Weeknd",
+                  "duration": 263,
+                  "durationFormatted": "4:23",
+                  "thumbnail": "https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg"
                 }
               ]
             }
         """.trimIndent()
 
         val engine = SearchEngine()
-        val results = engine.parseAudiusTracks(json)
+        val results = engine.parseBackendResults(json)
 
         assertEquals(2, results.size)
 
         val first = results[0]
-        assertEquals("D8m9w", first.videoId)
-        assertEquals("Summer Vibes", first.title)
-        assertEquals("Audius Artist", first.artist)
-        assertEquals(185000L, first.durationMs)
-        assertEquals("https://creatornode.audius.co/ipfs/Qm480", first.thumbnailUrl)
-        assertEquals("https://api.audius.co/v1/tracks/D8m9w/stream?app_name=LumiOne", first.streamUrl)
+        assertEquals("60ItHLz5WEA", first.videoId)
+        assertEquals("Alan Walker - Faded", first.title)
+        assertEquals("Alan Walker", first.artist)
+        assertEquals(213000L, first.durationMs)
+        assertEquals("https://i.ytimg.com/vi/60ItHLz5WEA/hqdefault.jpg", first.thumbnailUrl)
 
         val second = results[1]
-        assertEquals("abc1234", second.videoId)
-        assertEquals("Night Drive", second.title)
-        assertEquals("Synth Producer", second.artist)
-        assertEquals(210000L, second.durationMs)
-        assertEquals("https://creatornode.audius.co/ipfs/Qm150_2", second.thumbnailUrl)
+        assertEquals("4NRXx6U8ABQ", second.videoId)
+        assertEquals("The Weeknd - Blinding Lights", second.title)
+        assertEquals("The Weeknd", second.artist)
+        assertEquals(263000L, second.durationMs)
+        assertEquals("https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg", second.thumbnailUrl)
     }
 
     @Test
-    fun testParseAudiusTracksEmptyOrMalformed() {
+    fun testParseBackendResultsEmptyOrMalformed() {
         val engine = SearchEngine()
-        assertTrue(engine.parseAudiusTracks("").isEmpty())
-        assertTrue(engine.parseAudiusTracks("{}").isEmpty())
-        assertTrue(engine.parseAudiusTracks("""{"data": []}""").isEmpty())
-        assertTrue(engine.parseAudiusTracks("invalid json").isEmpty())
+        assertTrue(engine.parseBackendResults("").isEmpty())
+        assertTrue(engine.parseBackendResults("{}").isEmpty())
+        assertTrue(engine.parseBackendResults("""{"results": []}""").isEmpty())
+        assertTrue(engine.parseBackendResults("invalid json").isEmpty())
+    }
+
+    @Test
+    fun testParseInvidiousDirectValidJson() {
+        val json = """
+            [
+              {
+                "videoId": "dQw4w9WgXcQ",
+                "title": "Never Gonna Give You Up",
+                "author": "Rick Astley",
+                "lengthSeconds": 212,
+                "videoThumbnails": [
+                  {
+                    "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
+                  }
+                ]
+              }
+            ]
+        """.trimIndent()
+
+        val engine = SearchEngine()
+        val results = engine.parseInvidiousDirect(json)
+
+        assertEquals(1, results.size)
+        val item = results[0]
+        assertEquals("dQw4w9WgXcQ", item.videoId)
+        assertEquals("Never Gonna Give You Up", item.title)
+        assertEquals("Rick Astley", item.artist)
+        assertEquals(212000L, item.durationMs)
+        assertEquals("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", item.thumbnailUrl)
     }
 }

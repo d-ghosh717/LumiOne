@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Outer Glow -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="34dp" />
+            <solid android:color="#261240" />
+        </shape>
+    </item>
+    <!-- Card Surface -->
+    <item
+        android:top="2dp"
+        android:bottom="2dp"
+        android:left="2dp"
+        android:right="2dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="32dp" />
+            <gradient
+                android:angle="315"
+                android:startColor="#261542"
+                android:centerColor="#180C2C"
+                android:endColor="#0F061C"
+                android:type="linear" />
+            <stroke
+                android:width="1.5dp"
+                android:color="#40C084FC" />
+        </shape>
+    </item>
+    <!-- Top Highlight -->
+    <item
+        android:left="16dp"
+        android:right="16dp"
+        android:top="4dp"
+        android:height="1.5dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="1dp" />
+            <solid android:color="#33F5D0FE" />
+        </shape>
+    </item>
+</layer-list>

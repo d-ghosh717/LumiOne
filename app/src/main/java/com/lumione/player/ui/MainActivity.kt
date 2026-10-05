@@ -50,6 +50,10 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private lateinit var btnBack: ImageButton
     private lateinit var btnSettings: ImageButton
     private lateinit var btnLike: ImageButton
+    private lateinit var navHome: ImageButton
+    private lateinit var navSearch: ImageButton
+    private lateinit var navLibrary: ImageButton
+    private lateinit var navProfile: ImageButton
     private var isLiked = false
     private lateinit var trackAdapter: TrackAdapter
 
@@ -81,6 +85,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         bindViews()
         setupSearchUI()
         setupPlayerUI()
+        setupNavUI()
         startAndBindService()
         loadTrendingTracks()
     }
@@ -135,6 +140,10 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         btnBack = findViewById(R.id.btnBack)
         btnSettings = findViewById(R.id.btnSettings)
         btnLike = findViewById(R.id.btnLike)
+        navHome = findViewById(R.id.navHome)
+        navSearch = findViewById(R.id.navSearch)
+        navLibrary = findViewById(R.id.navLibrary)
+        navProfile = findViewById(R.id.navProfile)
 
         trackAdapter = TrackAdapter(mutableListOf()) { result, position ->
             val track = result.toTrack()
@@ -178,6 +187,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         }
 
         btnSeeAll.setOnClickListener {
+            searchInput.setText("")
             loadTrendingTracks()
         }
     }
@@ -192,7 +202,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     private fun loadTrendingTracks() {
-        sectionTitle.text = "🔥 Trending on Audius"
+        sectionTitle.text = "Trending Now"
         mainScope.launch {
             val results = withContext(Dispatchers.IO) { searchEngine.getTrending() }
             if (results.isNotEmpty()) {
@@ -221,7 +231,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         btnBack.setOnClickListener { hideFullPlayer() }
 
         btnSettings.setOnClickListener {
-            Toast.makeText(this, "LumiOne Music • Streamed natively from Audius", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "LumiOne Music • Futuristic Audio Experience", Toast.LENGTH_SHORT).show()
         }
 
         btnLike.setOnClickListener {
@@ -270,6 +280,23 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 svc.seekTo(target)
             }
         })
+    }
+
+    private fun setupNavUI() {
+        navHome.setOnClickListener {
+            findViewById<ScrollView>(R.id.mainScrollView)?.smoothScrollTo(0, 0)
+        }
+        navSearch.setOnClickListener {
+            searchInput.requestFocus()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            imm?.showSoftInput(searchInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
+        navLibrary.setOnClickListener {
+            Toast.makeText(this, "Queue & Library: ${trackAdapter.itemCount} tracks ready", Toast.LENGTH_SHORT).show()
+        }
+        navProfile.setOnClickListener {
+            Toast.makeText(this, "LumiOne Player v1.0 • Audius Native Engine", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun togglePlayPause() {
@@ -358,7 +385,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 }
 
-// ─── Modern Track Adapter (RecyclerView) ──────────────────────────────────────
+// ─── Modern Editorial Track Adapter (RecyclerView) ───────────────────────────
 
 class TrackAdapter(
     val results: MutableList<SearchResult>,
@@ -416,7 +443,7 @@ class TrackAdapter(
             }
 
             if (isPlaying) {
-                cardContainer.setBackgroundResource(R.drawable.bg_play_chip)
+                cardContainer.setBackgroundResource(R.drawable.bg_active_track_pill)
                 playIcon.setImageResource(R.drawable.ic_pause)
             } else {
                 cardContainer.setBackgroundResource(R.drawable.bg_track_card)

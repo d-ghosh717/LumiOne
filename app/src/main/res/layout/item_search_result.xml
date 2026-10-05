@@ -1,34 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="76dp"
-    android:background="@drawable/bg_track_item"
-    android:clickable="true"
-    android:focusable="true"
+    android:layout_height="wrap_content"
     android:paddingHorizontal="16dp"
-    android:paddingVertical="4dp">
+    android:paddingVertical="5dp"
+    android:clipToPadding="false">
 
     <RelativeLayout
         android:id="@+id/trackCardContainer"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="78dp"
         android:background="@drawable/bg_track_card"
-        android:clickable="false"
-        android:focusable="false"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp">
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="10dp">
 
-        <!-- Circular Album Art inspired by reference -->
+        <!-- Circular Album Art Disc -->
         <ImageView
             android:id="@+id/resultThumbnail"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
             android:layout_centerVertical="true"
             android:background="@drawable/bg_album_art_placeholder"
             android:scaleType="centerCrop"
-            android:clickable="false"
-            android:focusable="false"
-            android:clipToOutline="true" />
+            android:clipToOutline="true"
+            android:elevation="4dp" />
 
         <!-- Track Info -->
         <LinearLayout
@@ -37,10 +32,8 @@
             android:layout_centerVertical="true"
             android:layout_toStartOf="@+id/resultActionPill"
             android:layout_toEndOf="@+id/resultThumbnail"
-            android:layout_marginStart="14dp"
-            android:layout_marginEnd="10dp"
-            android:clickable="false"
-            android:focusable="false"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="12dp"
             android:orientation="vertical">
 
             <TextView
@@ -48,12 +41,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="@color/text_primary"
-                android:textSize="15sp"
+                android:textSize="16sp"
                 android:textStyle="bold"
                 android:fontFamily="@font/plus_jakarta_sans"
+                android:letterSpacing="-0.01"
                 android:singleLine="true"
-                android:clickable="false"
-                android:focusable="false"
                 android:ellipsize="end" />
 
             <TextView
@@ -62,26 +54,23 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:textColor="@color/primary_lavender"
-                android:textSize="12sp"
+                android:textSize="13sp"
                 android:fontFamily="@font/manrope"
                 android:singleLine="true"
-                android:clickable="false"
-                android:focusable="false"
                 android:ellipsize="end" />
         </LinearLayout>
 
-        <!-- Play Pill Action inspired by reference -->
+        <!-- Tactile Play / Duration Pill Action -->
         <LinearLayout
             android:id="@+id/resultActionPill"
             android:layout_width="wrap_content"
-            android:layout_height="32dp"
+            android:layout_height="34dp"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
             android:background="@drawable/bg_play_chip"
-            android:paddingHorizontal="10dp"
+            android:paddingHorizontal="12dp"
             android:gravity="center"
-            android:clickable="false"
-            android:focusable="false"
+            android:elevation="2dp"
             android:orientation="horizontal">
 
             <ImageView
@@ -90,9 +79,7 @@
                 android:layout_height="12dp"
                 android:src="@drawable/ic_play"
                 android:tint="@color/primary_bright"
-                android:clickable="false"
-                android:focusable="false"
-                android:layout_marginEnd="4dp" />
+                android:layout_marginEnd="5dp" />
 
             <TextView
                 android:id="@+id/resultDuration"
@@ -101,8 +88,6 @@
                 android:textColor="@color/primary_violet"
                 android:textSize="11sp"
                 android:textStyle="bold"
-                android:clickable="false"
-                android:focusable="false"
                 android:fontFamily="@font/plus_jakarta_sans" />
         </LinearLayout>
 

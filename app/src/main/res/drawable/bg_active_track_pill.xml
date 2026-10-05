@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#40C084FC">
+    <item>
+        <layer-list>
+            <!-- Outer Glow -->
+            <item>
+                <shape android:shape="rectangle">
+                    <corners android:radius="36dp" />
+                    <solid android:color="#2E164E" />
+                </shape>
+            </item>
+            <!-- Floating Pill Surface -->
+            <item
+                android:top="1.5dp"
+                android:bottom="1.5dp"
+                android:left="1.5dp"
+                android:right="1.5dp">
+                <shape android:shape="rectangle">
+                    <corners android:radius="34dp" />
+                    <gradient
+                        android:angle="270"
+                        android:startColor="#2D1A50"
+                        android:endColor="#180C2C"
+                        android:type="linear" />
+                    <stroke
+                        android:width="1.5dp"
+                        android:color="#80A855F7" />
+                </shape>
+            </item>
+            <!-- Inner Glass Highlight -->
+            <item
+                android:left="24dp"
+                android:right="24dp"
+                android:top="3dp"
+                android:height="1dp">
+                <shape android:shape="rectangle">
+                    <corners android:radius="1dp" />
+                    <solid android:color="#33F5D0FE" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</ripple>

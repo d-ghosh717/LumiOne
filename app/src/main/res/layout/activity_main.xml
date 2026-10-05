@@ -526,15 +526,6 @@
                         android:clipToOutline="true"
                         android:elevation="6dp" />
 
-                    <!-- Official YouTube IFrame Player View (Visible Playback Deck) -->
-                    <WebView
-                        android:id="@+id/youtubeWebView"
-                        android:layout_width="260dp"
-                        android:layout_height="200dp"
-                        android:layout_gravity="center"
-                        android:elevation="8dp"
-                        android:visibility="visible" />
-
                     <!-- Turntable Tone Arm Overlay on Upper Right -->
                     <ImageView
                         android:layout_width="60dp"

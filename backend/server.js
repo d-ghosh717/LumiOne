@@ -2,12 +2,67 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const https = require('https');
+const admin = require('firebase-admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+
+// ─── Firebase Admin Setup ───────────────────────────────────────
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'lumione-1278a';
+
+try {
+    if (!admin.apps.length) {
+        if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+            const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                projectId: FIREBASE_PROJECT_ID
+            });
+            console.log(`[FIREBASE] Initialized with Service Account for ${FIREBASE_PROJECT_ID}`);
+        } else {
+            admin.initializeApp({
+                projectId: FIREBASE_PROJECT_ID
+            });
+            console.log(`[FIREBASE] Initialized with Project ID: ${FIREBASE_PROJECT_ID}`);
+        }
+    }
+} catch (err) {
+    console.error('[FIREBASE] Initialization error:', err.message);
+}
+
+// ─── Authentication Middleware ─────────────────────────────────
+async function requireFirebaseAuth(req, res, next) {
+    const authHeader = req.headers.authorization || '';
+    if (!authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+            error: 'Unauthorized',
+            message: 'Authentication required. Missing or invalid Authorization header (expected Bearer <firebase_id_token>).'
+        });
+    }
+
+    const idToken = authHeader.split('Bearer ')[1].trim();
+    if (!idToken) {
+        return res.status(401).json({
+            error: 'Unauthorized',
+            message: 'Empty Firebase ID token provided.'
+        });
+    }
+
+    try {
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        req.user = decodedToken;
+        return next();
+    } catch (error) {
+        console.error(`[AUTH] Token verification failed: ${error.message}`);
+        return res.status(401).json({
+            error: 'Unauthorized',
+            message: `Invalid or expired Firebase ID token: ${error.message}`
+        });
+    }
+}
 
 const webPath = path.join(__dirname, '..', 'web');
 app.use(express.static(webPath));
@@ -77,10 +132,10 @@ function invidiousSearch(query, instances, maxResults = 15) {
                             })(),
                             duration: v.lengthSeconds || 0,
                             durationFormatted: formatDuration(v.lengthSeconds),
-                            views: v.viewCount || 0,
-                            url: `https://www.youtube.com/watch?v=${v.videoId}`,
+                            provider: 'lumione',
+                            providerId: v.videoId,
                         }));
-                        console.log(`[SEARCH] Invidious OK: ${instance} (${results.length} results)`);
+                        console.log(`[SEARCH] Search provider OK: ${instance} (${results.length} results) for user ${reqUser(query)}`);
                         resolve(results);
                     } catch {
                         tryNext();
@@ -88,7 +143,7 @@ function invidiousSearch(query, instances, maxResults = 15) {
                 });
             });
             req.on('error', (err) => {
-                console.log(`[SEARCH] Invidious failed (${instance}): ${err.message}`);
+                console.log(`[SEARCH] Search provider failed (${instance}): ${err.message}`);
                 tryNext();
             });
             req.on('timeout', () => {
@@ -101,12 +156,16 @@ function invidiousSearch(query, instances, maxResults = 15) {
     });
 }
 
-// ─── API: Search YouTube ────────────────────────────────────────
-app.get('/api/search', async (req, res) => {
+function reqUser(q) {
+    return 'authenticated';
+}
+
+// ─── API: Authenticated Music Search ────────────────────────────
+app.get('/api/search', requireFirebaseAuth, async (req, res) => {
     const query = req.query.q;
     if (!query) return res.status(400).json({ error: 'Query parameter "q" is required' });
 
-    console.log(`[SEARCH] Query: "${query}"`);
+    console.log(`[SEARCH] Authenticated query from ${req.user.email || req.user.uid}: "${query}"`);
     const invInstances = await getHealthyInvidiousInstances();
     const invResults = await invidiousSearch(query, invInstances);
     if (invResults && invResults.length > 0) {
@@ -116,9 +175,9 @@ app.get('/api/search', async (req, res) => {
     return res.json({ results: [] });
 });
 
-// ─── API: Trending ───────────────────────────────────────────────
-app.get('/api/trending', async (req, res) => {
-    console.log('[TRENDING] Fetching trending music...');
+// ─── API: Authenticated Trending ─────────────────────────────────
+app.get('/api/trending', requireFirebaseAuth, async (req, res) => {
+    console.log(`[TRENDING] Authenticated request from ${req.user.email || req.user.uid}`);
     const invInstances = await getHealthyInvidiousInstances();
 
     for (const instance of invInstances) {
@@ -143,6 +202,8 @@ app.get('/api/trending', async (req, res) => {
                                 })(),
                                 duration: v.lengthSeconds || 0,
                                 durationFormatted: formatDuration(v.lengthSeconds),
+                                provider: 'lumione',
+                                providerId: v.videoId,
                             })));
                         } catch { reject(new Error('parse error')); }
                     });

@@ -17,7 +17,9 @@ class SearchEngineTest {
                   "artist": "Alan Walker",
                   "duration": 213,
                   "durationFormatted": "3:33",
-                  "thumbnail": "https://i.ytimg.com/vi/60ItHLz5WEA/hqdefault.jpg"
+                  "thumbnail": "https://i.ytimg.com/vi/60ItHLz5WEA/hqdefault.jpg",
+                  "provider": "lumione",
+                  "providerId": "60ItHLz5WEA"
                 },
                 {
                   "id": "4NRXx6U8ABQ",
@@ -25,7 +27,9 @@ class SearchEngineTest {
                   "artist": "The Weeknd",
                   "duration": 263,
                   "durationFormatted": "4:23",
-                  "thumbnail": "https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg"
+                  "thumbnail": "https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg",
+                  "provider": "lumione",
+                  "providerId": "4NRXx6U8ABQ"
                 }
               ]
             }
@@ -42,6 +46,7 @@ class SearchEngineTest {
         assertEquals("Alan Walker", first.artist)
         assertEquals(213000L, first.durationMs)
         assertEquals("https://i.ytimg.com/vi/60ItHLz5WEA/hqdefault.jpg", first.thumbnailUrl)
+        assertEquals("lumione", first.provider)
 
         val second = results[1]
         assertEquals("4NRXx6U8ABQ", second.videoId)
@@ -49,6 +54,7 @@ class SearchEngineTest {
         assertEquals("The Weeknd", second.artist)
         assertEquals(263000L, second.durationMs)
         assertEquals("https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg", second.thumbnailUrl)
+        assertEquals("lumione", second.provider)
     }
 
     @Test
@@ -58,35 +64,5 @@ class SearchEngineTest {
         assertTrue(engine.parseBackendResults("{}").isEmpty())
         assertTrue(engine.parseBackendResults("""{"results": []}""").isEmpty())
         assertTrue(engine.parseBackendResults("invalid json").isEmpty())
-    }
-
-    @Test
-    fun testParseInvidiousDirectValidJson() {
-        val json = """
-            [
-              {
-                "videoId": "dQw4w9WgXcQ",
-                "title": "Never Gonna Give You Up",
-                "author": "Rick Astley",
-                "lengthSeconds": 212,
-                "videoThumbnails": [
-                  {
-                    "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
-                  }
-                ]
-              }
-            ]
-        """.trimIndent()
-
-        val engine = SearchEngine()
-        val results = engine.parseInvidiousDirect(json)
-
-        assertEquals(1, results.size)
-        val item = results[0]
-        assertEquals("dQw4w9WgXcQ", item.videoId)
-        assertEquals("Never Gonna Give You Up", item.title)
-        assertEquals("Rick Astley", item.artist)
-        assertEquals(212000L, item.durationMs)
-        assertEquals("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg", item.thumbnailUrl)
     }
 }

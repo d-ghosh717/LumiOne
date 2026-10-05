@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1022113700024",
+    "project_id": "lumione-1278a",
+    "storage_bucket": "lumione-1278a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1022113700024:android:389dcdba471451c6afbc4d",
+        "android_client_info": {
+          "package_name": "com.lumione.player"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1022113700024-dt8s5m40ip2hpb3a0v344sv8ajitdf57.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMkNt-9DdOmaIQiv6WsfdZnkiUCshiKH4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1022113700024-dt8s5m40ip2hpb3a0v344sv8ajitdf57.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

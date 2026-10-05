@@ -3,18 +3,20 @@ package com.lumione.player.ui
 import android.content.*
 import android.os.*
 import android.view.*
-import android.webkit.WebView
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.lumione.player.R
-import com.lumione.player.player.YouTubePlayerController
-import com.lumione.player.player.YouTubePlayerListener
+import com.lumione.player.auth.AuthManager
+import com.lumione.player.auth.AuthState
 import com.lumione.player.queue.QueueManager
 import com.lumione.player.queue.RepeatMode
 import com.lumione.player.queue.Track
+import com.lumione.player.search.SearchAuthException
 import com.lumione.player.search.SearchEngine
 import com.lumione.player.search.SearchResult
 import kotlinx.coroutines.*
@@ -24,7 +26,29 @@ class MainActivity : AppCompatActivity() {
     private val searchEngine = SearchEngine()
     private val queueManager = QueueManager()
     private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private val youTubeController by lazy { YouTubePlayerController(this) }
+    private val authManager by lazy { AuthManager(this) }
+    private var accountDialog: BottomSheetDialog? = null
+
+    private val googleSignInLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val data: Intent? = result.data
+        authManager.handleSignInResult(
+            data = data,
+            onSuccess = { user ->
+                Toast.makeText(this, "Signed in as ${user.displayName ?: user.email}", Toast.LENGTH_SHORT).show()
+                updateAccountDialogView(accountDialog)
+                loadTrendingTracks()
+            },
+            onError = { error ->
+                Toast.makeText(this, "Sign-in error: $error", Toast.LENGTH_LONG).show()
+                updateAccountDialogView(accountDialog)
+            },
+            onCancelled = {
+                updateAccountDialogView(accountDialog)
+            }
+        )
+    }
 
     // ─── Views ────────────────────────────────────────────────────────────────
     private lateinit var searchInput: EditText
@@ -40,7 +64,6 @@ class MainActivity : AppCompatActivity() {
     private var featuredTrackResult: SearchResult? = null
     private var allLoadedResults: List<SearchResult> = emptyList()
 
-    private lateinit var youtubeWebView: WebView
     private lateinit var miniPlayerCard: View
     private lateinit var miniTrackTitle: TextView
     private lateinit var miniArtistName: TextView
@@ -80,16 +103,24 @@ class MainActivity : AppCompatActivity() {
         )
 
         bindViews()
-        setupYouTubePlayer()
         setupSearchUI()
         setupPlayerUI()
         setupNavUI()
-        loadTrendingTracks()
+
+        if (authManager.isUserSignedIn()) {
+            loadTrendingTracks()
+        } else {
+            sectionTitle.text = "Sign in to search music"
+            featuredMusicCard.visibility = View.GONE
+            trackAdapter.updateResults(emptyList())
+        }
     }
 
     override fun onDestroy() {
         mainScope.cancel()
-        youTubeController.destroy()
+        searchEngine.cancel()
+        authManager.cleanup()
+        accountDialog?.dismiss()
         super.onDestroy()
     }
 
@@ -106,7 +137,6 @@ class MainActivity : AppCompatActivity() {
         featuredArtist = findViewById(R.id.featuredArtist)
         btnFeaturedPlay = findViewById(R.id.btnFeaturedPlay)
         featuredPlayIcon = findViewById(R.id.featuredPlayIcon)
-        youtubeWebView = findViewById(R.id.youtubeWebView)
         miniPlayerCard = findViewById(R.id.miniPlayerCard)
         miniTrackTitle = findViewById(R.id.miniTrackTitle)
         miniArtistName = findViewById(R.id.miniArtistName)
@@ -158,46 +188,11 @@ class MainActivity : AppCompatActivity() {
         searchResultsList.adapter = trackAdapter
     }
 
-    private fun setupYouTubePlayer() {
-        youTubeController.initialize(youtubeWebView)
-        youTubeController.setListener(object : YouTubePlayerListener {
-            override fun onPlayerReady() {}
-
-            override fun onPlayStateChanged(isPlaying: Boolean) {
-                updatePlayPauseIcons(isPlaying)
-            }
-
-            override fun onProgressUpdate(currentMs: Long, durationMs: Long) {
-                if (durationMs > 0) {
-                    val progress = ((currentMs * 1000) / durationMs).toInt()
-                    fullSeekBar.progress = progress
-                    miniProgressBar.progress = progress
-                }
-                fullCurrentTime.text = formatMs(currentMs)
-                fullDuration.text = formatMs(durationMs)
-            }
-
-            override fun onVideoEnded() {
-                queueManager.nextTrack()?.let { playTrack(it) }
-            }
-
-            override fun onError(errorCode: Int) {
-                val currentTrack = queueManager.currentTrack()
-                val nextTrack = queueManager.nextTrack()
-                if (nextTrack != null && nextTrack.videoId != currentTrack?.videoId) {
-                    Toast.makeText(this@MainActivity, "Video restricted (Code $errorCode). Trying next result...", Toast.LENGTH_SHORT).show()
-                    playTrack(nextTrack)
-                } else {
-                    Toast.makeText(this@MainActivity, "This YouTube upload can't be played inside LumiOne. Try another result.", Toast.LENGTH_LONG).show()
-                }
-            }
-        })
-    }
-
     private fun playTrack(track: Track) {
         updateTrackUI(track)
         trackAdapter.setCurrentPlayingTrackId(track.videoId)
-        youTubeController.loadVideo(track.videoId)
+        updatePlayPauseIcons(false)
+        Toast.makeText(this, "Audio playback provider pending integration", Toast.LENGTH_SHORT).show()
     }
 
     // ─── Search UI ────────────────────────────────────────────────────────────
@@ -259,19 +254,61 @@ class MainActivity : AppCompatActivity() {
 
     private fun performSearch(query: String) {
         if (query.isBlank()) return
-        sectionTitle.text = "Results for \"$query\""
+
+        if (!authManager.isUserSignedIn()) {
+            sectionTitle.text = "Sign in to search music"
+            featuredMusicCard.visibility = View.GONE
+            trackAdapter.updateResults(emptyList())
+            Toast.makeText(this, "Sign in to search music.", Toast.LENGTH_SHORT).show()
+            showAccountDialog()
+            return
+        }
+
+        sectionTitle.text = "Searching \"$query\"..."
         mainScope.launch {
-            val results = withContext(Dispatchers.IO) { searchEngine.search(query) }
-            displayResults(results, isSearch = true)
+            try {
+                var idToken = authManager.getIdToken(forceRefresh = false)
+                var results: List<SearchResult> = emptyList()
+                try {
+                    results = searchEngine.search(query, idToken)
+                } catch (e: SearchAuthException) {
+                    // Refresh token and retry once
+                    idToken = authManager.getIdToken(forceRefresh = true)
+                    results = searchEngine.search(query, idToken)
+                }
+                sectionTitle.text = "Results for \"$query\""
+                displayResults(results, isSearch = true)
+            } catch (e: Exception) {
+                sectionTitle.text = "Search results"
+                Toast.makeText(this@MainActivity, e.message ?: "Failed to retrieve search results", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
     private fun loadTrendingTracks() {
+        if (!authManager.isUserSignedIn()) {
+            sectionTitle.text = "Sign in to search music"
+            featuredMusicCard.visibility = View.GONE
+            trackAdapter.updateResults(emptyList())
+            return
+        }
+
         sectionTitle.text = "Trending Now"
         mainScope.launch {
-            val results = withContext(Dispatchers.IO) { searchEngine.getTrending() }
-            if (results.isNotEmpty()) {
-                displayResults(results, isSearch = false)
+            try {
+                var idToken = authManager.getIdToken(forceRefresh = false)
+                var results: List<SearchResult> = emptyList()
+                try {
+                    results = searchEngine.getTrending(idToken)
+                } catch (e: SearchAuthException) {
+                    idToken = authManager.getIdToken(forceRefresh = true)
+                    results = searchEngine.getTrending(idToken)
+                }
+                if (results.isNotEmpty()) {
+                    displayResults(results, isSearch = false)
+                }
+            } catch (e: Exception) {
+                // If trending fails, keep current state
             }
         }
     }
@@ -321,7 +358,7 @@ class MainActivity : AppCompatActivity() {
         btnBack.setOnClickListener { hideFullPlayer() }
 
         btnSettings.setOnClickListener {
-            Toast.makeText(this, "LumiOne Music • YouTube IFrame Engine", Toast.LENGTH_SHORT).show()
+            showAccountDialog()
         }
 
         btnLike.setOnClickListener {
@@ -359,7 +396,8 @@ class MainActivity : AppCompatActivity() {
             var dragging = false
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser && dragging) {
-                    val duration = youTubeController.getDurationMs()
+                    val currentTrack = queueManager.currentTrack()
+                    val duration = currentTrack?.durationMs ?: 0L
                     val target = (progress.toLong() * duration) / 1000L
                     fullCurrentTime.text = formatMs(target)
                 }
@@ -367,9 +405,6 @@ class MainActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(sb: SeekBar?) { dragging = true }
             override fun onStopTrackingTouch(sb: SeekBar?) {
                 dragging = false
-                val duration = youTubeController.getDurationMs()
-                val target = (sb!!.progress.toLong() * duration) / 1000L
-                youTubeController.seekTo(target)
             }
         })
     }
@@ -387,16 +422,75 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Queue: ${allLoadedResults.size} tracks ready", Toast.LENGTH_SHORT).show()
         }
         navProfile.setOnClickListener {
-            Toast.makeText(this, "LumiOne Player v2.0 • YouTube Official IFrame API", Toast.LENGTH_SHORT).show()
+            showAccountDialog()
+        }
+    }
+
+    private fun showAccountDialog() {
+        val dialog = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.dialog_account, null)
+        dialog.setContentView(view)
+        accountDialog = dialog
+
+        view.findViewById<View>(R.id.btnCloseDialog).setOnClickListener {
+            dialog.dismiss()
+        }
+
+        view.findViewById<View>(R.id.btnGoogleSignIn).setOnClickListener {
+            googleSignInLauncher.launch(authManager.getSignInIntent())
+        }
+
+        view.findViewById<View>(R.id.btnSignOut).setOnClickListener {
+            authManager.signOut {
+                Toast.makeText(this, "Signed out of LumiOne", Toast.LENGTH_SHORT).show()
+                updateAccountDialogView(dialog)
+                sectionTitle.text = "Sign in to search music"
+                featuredMusicCard.visibility = View.GONE
+                trackAdapter.updateResults(emptyList())
+            }
+        }
+
+        updateAccountDialogView(dialog)
+        dialog.show()
+    }
+
+    private fun updateAccountDialogView(dialog: BottomSheetDialog?) {
+        if (dialog == null || !dialog.isShowing) return
+        val root = dialog.findViewById<View>(R.id.signedInContainer)?.parent as? View ?: return
+
+        val signedInContainer = root.findViewById<View>(R.id.signedInContainer) ?: return
+        val signedOutContainer = root.findViewById<View>(R.id.signedOutContainer) ?: return
+        val txtUserName = root.findViewById<TextView>(R.id.txtUserName) ?: return
+        val txtUserEmail = root.findViewById<TextView>(R.id.txtUserEmail) ?: return
+        val txtUserUid = root.findViewById<TextView>(R.id.txtUserUid) ?: return
+        val imgUserAvatar = root.findViewById<ImageView>(R.id.imgUserAvatar) ?: return
+
+        val user = authManager.getCurrentUser()
+        if (user != null) {
+            signedInContainer.visibility = View.VISIBLE
+            signedOutContainer.visibility = View.GONE
+            txtUserName.text = user.displayName ?: "LumiOne Listener"
+            txtUserEmail.text = user.email ?: "No email associated"
+            txtUserUid.text = "UID: ${user.uid}"
+
+            val photoUrl = user.photoUrl?.toString()
+            if (!photoUrl.isNullOrBlank()) {
+                Glide.with(this)
+                    .load(photoUrl)
+                    .circleCrop()
+                    .placeholder(R.drawable.bg_album_art_placeholder)
+                    .into(imgUserAvatar)
+            } else {
+                imgUserAvatar.setImageResource(R.drawable.bg_album_art_placeholder)
+            }
+        } else {
+            signedInContainer.visibility = View.GONE
+            signedOutContainer.visibility = View.VISIBLE
         }
     }
 
     private fun togglePlayPause() {
-        if (youTubeController.isPlaying()) {
-            youTubeController.pause()
-        } else {
-            youTubeController.play()
-        }
+        Toast.makeText(this, "Audio playback provider pending integration", Toast.LENGTH_SHORT).show()
     }
 
     private fun showFullPlayer() {
@@ -426,6 +520,10 @@ class MainActivity : AppCompatActivity() {
         miniArtistName.text = track.artist
         fullTrackTitle.text = track.title
         fullArtistName.text = track.artist
+        fullCurrentTime.text = "0:00"
+        fullDuration.text = formatMs(track.durationMs)
+        fullSeekBar.progress = 0
+        miniProgressBar.progress = 0
         miniPlayerCard.visibility = View.VISIBLE
 
         if (track.thumbnailUrl.isNotBlank()) {

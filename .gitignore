@@ -10,4 +10,9 @@
 .cxx
 local.properties
 node_modules/
+backend/node_modules/
 backend/bin/
+client_secret*.json
+*.keystore
+*.jks
+credentials*.json

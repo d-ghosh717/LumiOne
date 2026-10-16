@@ -68,7 +68,13 @@ class SearchEngine {
         }
 
         // 2. Fallback: Search YouTube metadata directly via embedded engine
-        return@withContext searchLocalYouTube(trimmed)
+        val ytResults = searchLocalYouTube(trimmed)
+        if (ytResults.isNotEmpty()) {
+            return@withContext ytResults
+        }
+
+        // 3. Fallback: Search JioSaavn metadata directly
+        return@withContext searchJioSaavn(trimmed)
     }
 
     suspend fun getTrending(idToken: String?): List<SearchResult> = withContext(Dispatchers.IO) {
@@ -89,13 +95,16 @@ class SearchEngine {
             Log.w(TAG, "Trending fetch from backend failed: ${e.message}. Fallback to top hits.")
         }
 
-        return@withContext searchLocalYouTube("Top Hits 2026")
+        val ytTrending = searchLocalYouTube("Top Hits 2026")
+        if (ytTrending.isNotEmpty()) return@withContext ytTrending
+        return@withContext searchJioSaavn("Top Hits")
     }
 
     private suspend fun searchLocalYouTube(query: String): List<SearchResult> = withContext(Dispatchers.IO) {
         val results = mutableListOf<SearchResult>()
         try {
             val request = YoutubeDLRequest("ytsearch10:$query").apply {
+                addOption("--extractor-args", "youtube:player_client=android")
                 addOption("--flat-playlist")
                 addOption("--no-warnings")
                 addOption("--geo-bypass")
@@ -123,6 +132,59 @@ class SearchEngine {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Local YouTube search failed: ${e.message}")
+        }
+        return@withContext results
+    }
+
+    suspend fun searchJioSaavn(query: String): List<SearchResult> = withContext(Dispatchers.IO) {
+        val results = mutableListOf<SearchResult>()
+        try {
+            val encodedQuery = URLEncoder.encode(query, "UTF-8")
+            val endpoint = "https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&cc=in&p=1&n=15&q=$encodedQuery"
+            val url = URL(endpoint)
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 8000
+                readTimeout = 8000
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                setRequestProperty("Accept", "application/json, text/plain, */*")
+            }
+
+            if (connection.responseCode in 200..299) {
+                val jsonStr = connection.inputStream.bufferedReader().use { it.readText() }
+                val root = JSONObject(jsonStr)
+                val items = root.optJSONArray("results")
+                if (items != null) {
+                    for (i in 0 until items.length()) {
+                        val item = items.getJSONObject(i)
+                        val id = item.optString("id", "")
+                        val title = item.optString("song", item.optString("title", ""))
+                        val artist = item.optString("singers", item.optString("primary_artists", ""))
+                        val duration = item.optLong("duration", 0L)
+                        var image = item.optString("image", "")
+                        if (image.contains("150x150")) {
+                            image = image.replace("150x150", "500x500")
+                        }
+                        if (id.isNotBlank() && title.isNotBlank()) {
+                            results.add(
+                                SearchResult(
+                                    videoId = id,
+                                    title = title,
+                                    artist = artist,
+                                    durationMs = duration * 1000L,
+                                    thumbnailUrl = image,
+                                    provider = "saavn",
+                                    providerId = id,
+                                    youtubeVideoId = ""
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            connection.disconnect()
+        } catch (e: Exception) {
+            Log.w(TAG, "JioSaavn fallback search failed: ${e.message}")
         }
         return@withContext results
     }

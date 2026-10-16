@@ -6,14 +6,16 @@ import com.lumione.player.queue.Track
 /**
  * Orchestrates multi-provider audio stream resolution in strict priority order:
  * 1. TuneIn (Radio mode only)
- * 2. YouTube (Primary high-fidelity audio stream resolver via native yt-dlp)
- * 3. Piped (First fallback — proxied YouTube streams via Piped API instances)
- * 4. Invidious (Secondary fallback resolver for YouTube video IDs)
- * 5. Audius (Decentralized indie / community fallback)
- * 6. Clean Unavailable state if no provider holds a legitimate matching stream.
+ * 2. YouTube (Primary high-fidelity audio stream resolver via native yt-dlp with android player_client)
+ * 3. JioSaavn (Fast, reliable 320kbps CDN audio stream resolver for mainstream tracks)
+ * 4. Piped (Proxied YouTube streams via Piped API instances)
+ * 5. Invidious (Secondary fallback resolver for YouTube video IDs)
+ * 6. Audius (Decentralized indie / community fallback)
+ * 7. Clean Unavailable state if no provider holds a legitimate matching stream.
  */
 class CompositeAudioProvider(
     val youtubeAudioProvider: YouTubeAudioProvider = YouTubeAudioProvider(),
+    val jioSaavnAudioProvider: JioSaavnAudioProvider = JioSaavnAudioProvider(),
     val pipedAudioProvider: PipedAudioProvider = PipedAudioProvider(),
     val invidiousAudioProvider: InvidiousAudioProvider = InvidiousAudioProvider(),
     val tuneInProvider: TuneInProvider = TuneInProvider(),
@@ -43,7 +45,7 @@ class CompositeAudioProvider(
             }
         }
 
-        // 2. Primary On-Demand: YouTube Audio Resolver (local yt-dlp)
+        // 2. Primary On-Demand: YouTube Audio Resolver (local yt-dlp with android client)
         try {
             val ytResult = youtubeAudioProvider.resolveStreamUrl(track)
             if (ytResult is AudioStreamResult.Success) {
@@ -56,7 +58,21 @@ class CompositeAudioProvider(
             Log.w(LOG_TAG, "yt-dlp FAILED: ${e.message}")
         }
 
-        // 3. First Fallback: Piped API (proxied streams — no CDN header issues)
+        // 3. Fast Mainstream Fallback: JioSaavn (320kbps unblocked CDN streams)
+        try {
+            Log.i(LOG_TAG, "Trying JioSaavn fallback for '${track.title}'")
+            val saavnResult = jioSaavnAudioProvider.resolveStreamUrl(track)
+            if (saavnResult is AudioStreamResult.Success) {
+                Log.i(TAG, "Resolved on-demand stream via JioSaavn fallback for '${track.title}'")
+                return saavnResult
+            }
+            val saavnReason = (saavnResult as? AudioStreamResult.Unavailable)?.reason ?: "JioSaavn returned no match"
+            Log.w(LOG_TAG, "JioSaavn failed: $saavnReason")
+        } catch (e: Exception) {
+            Log.w(LOG_TAG, "JioSaavn failed: ${e.message}")
+        }
+
+        // 4. Fallback: Piped API (proxied streams)
         try {
             Log.i(LOG_TAG, "Trying Piped fallback")
             val pipedResult = pipedAudioProvider.resolveStreamUrl(track)
@@ -70,7 +86,7 @@ class CompositeAudioProvider(
             Log.w(LOG_TAG, "Piped failed: ${e.message}")
         }
 
-        // 4. Second Fallback: Invidious
+        // 5. Fallback: Invidious
         try {
             Log.i(LOG_TAG, "Trying Invidious fallback")
             val invidiousResult = invidiousAudioProvider.resolveStreamUrl(track)
@@ -84,7 +100,7 @@ class CompositeAudioProvider(
             Log.w(LOG_TAG, "Invidious failed: ${e.message}")
         }
 
-        // 5. Tertiary Fallback: Audius
+        // 6. Tertiary Fallback: Audius
         try {
             val audiusResult = audiusProvider.resolveStreamUrl(track)
             if (audiusResult is AudioStreamResult.Success) {
@@ -95,7 +111,7 @@ class CompositeAudioProvider(
             Log.d(TAG, "Audius fallback check skipped: ${e.message}")
         }
 
-        // 6. Clean Unavailable State
+        // 7. Clean Unavailable State
         Log.w(LOG_TAG, "Playback unavailable")
         return AudioStreamResult.Unavailable(
             "Unable to start playback: Track '${track.title}' is currently unavailable."

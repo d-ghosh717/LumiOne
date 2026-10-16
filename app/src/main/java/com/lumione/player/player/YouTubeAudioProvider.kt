@@ -118,13 +118,25 @@ class DefaultYouTubeStreamExtractor : YouTubeStreamExtractor {
 
     override suspend fun extractStream(videoId: String): YouTubeExtractedInfo? = withContext(Dispatchers.IO) {
         val url = "https://www.youtube.com/watch?v=$videoId"
-        val request = YoutubeDLRequest(url).apply {
-            addOption("-f", "bestaudio[ext=m4a]/bestaudio/best")
-            addOption("--no-playlist")
-            addOption("--no-warnings")
+        
+        // Try android player_client first to avoid bot detection ("Sign in to confirm you're not a bot")
+        val info = try {
+            val request = YoutubeDLRequest(url).apply {
+                addOption("--extractor-args", "youtube:player_client=android")
+                addOption("-f", "bestaudio[ext=m4a]/bestaudio/best")
+                addOption("--no-playlist")
+                addOption("--no-warnings")
+            }
+            YoutubeDL.getInstance().getInfo(request)
+        } catch (e: Exception) {
+            Log.w(TAG, "Android player_client failed (${e.message}), attempting fallback client negotiation", e)
+            val fallbackRequest = YoutubeDLRequest(url).apply {
+                addOption("-f", "bestaudio[ext=m4a]/bestaudio/best")
+                addOption("--no-playlist")
+                addOption("--no-warnings")
+            }
+            YoutubeDL.getInstance().getInfo(fallbackRequest)
         }
-
-        val info = YoutubeDL.getInstance().getInfo(request)
 
         val headers = mutableMapOf<String, String>()
         info.httpHeaders?.let { headers.putAll(it) }

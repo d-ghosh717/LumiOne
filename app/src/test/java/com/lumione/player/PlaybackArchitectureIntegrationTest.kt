@@ -194,13 +194,17 @@ class PlaybackArchitectureIntegrationTest {
         val invidiousProvider = InvidiousAudioProvider(fetcher = mockInvidiousFetcher)
         val provider = CompositeAudioProvider(
             youtubeAudioProvider = ytProvider,
+            jioSaavnAudioProvider = JioSaavnAudioProvider(fetcher = object : JioSaavnFetcher {
+                override suspend fun searchSongs(query: String): String? = null
+            }),
+            pipedAudioProvider = PipedAudioProvider(instances = emptyList()),
             invidiousAudioProvider = invidiousProvider
         )
 
         val track = Track(videoId = "60ItHLz5WEA", title = "Faded", artist = "Alan Walker")
         val result = provider.resolveStreamUrl(track)
 
-        assertTrue("Invidious fallback MUST be attempted when yt-dlp fails", invidiousCalled)
+        assertTrue("Invidious fallback MUST be attempted when yt-dlp and prior fallbacks fail", invidiousCalled)
         assertTrue("Composite provider should succeed via Invidious fallback", result is AudioStreamResult.Success)
         assertEquals("https://invidious.fallback.stream/audio.webm", (result as AudioStreamResult.Success).streamUrl)
     }
@@ -216,6 +220,10 @@ class PlaybackArchitectureIntegrationTest {
 
         val provider = CompositeAudioProvider(
             youtubeAudioProvider = YouTubeAudioProvider(extractor = failingYtExtractor),
+            jioSaavnAudioProvider = JioSaavnAudioProvider(fetcher = object : JioSaavnFetcher {
+                override suspend fun searchSongs(query: String): String? = null
+            }),
+            pipedAudioProvider = PipedAudioProvider(instances = emptyList()),
             invidiousAudioProvider = InvidiousAudioProvider(fetcher = failingInvidiousFetcher)
         )
 
@@ -238,7 +246,14 @@ class PlaybackArchitectureIntegrationTest {
             }
         }
         val rejectingProvider = CompositeAudioProvider(
-            youtubeAudioProvider = YouTubeAudioProvider(extractor = mockRejectionExtractor)
+            youtubeAudioProvider = YouTubeAudioProvider(extractor = mockRejectionExtractor),
+            jioSaavnAudioProvider = JioSaavnAudioProvider(fetcher = object : JioSaavnFetcher {
+                override suspend fun searchSongs(query: String): String? = null
+            }),
+            pipedAudioProvider = PipedAudioProvider(instances = emptyList()),
+            invidiousAudioProvider = InvidiousAudioProvider(fetcher = object : InvidiousFetcher {
+                override suspend fun fetchVideoDetails(baseUrl: String, videoId: String, timeoutMs: Int): String? = null
+            })
         )
 
         val track = Track(videoId = "60ItHLz5WEA", title = "Faded", artist = "Alan Walker")

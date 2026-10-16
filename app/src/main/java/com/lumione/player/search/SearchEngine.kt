@@ -1,6 +1,10 @@
 package com.lumione.player.search
 
+import android.util.Log
+import com.yausername.youtubedl_android.YoutubeDL
+import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.*
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -19,20 +23,23 @@ data class SearchResult(
     val favoriteCount: Long = 0,
     val repostCount: Long = 0,
     val provider: String = "lumione",
-    val providerId: String = videoId
+    val providerId: String = videoId,
+    val youtubeVideoId: String = videoId
 ) {
     val trackId: String get() = videoId
 }
 
 /**
- * Authenticated Search Engine for LumiOne Player.
+ * Authenticated Search Engine for LumiOne Player with automatic fallback.
  * Sends verified Firebase ID token to LumiOne backend to retrieve music metadata.
+ * If backend search is unavailable or returns no results, seamlessly searches YouTube metadata locally.
  */
 class SearchEngine {
 
     private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     companion object {
+        private const val TAG = "SearchEngine"
         private const val BACKEND_URL = "https://lumione.onrender.com"
     }
 
@@ -44,10 +51,24 @@ class SearchEngine {
             throw SearchAuthException("Sign in to search music.")
         }
 
-        val encodedQuery = URLEncoder.encode(trimmed, "UTF-8")
-        val url = "$BACKEND_URL/api/search?q=$encodedQuery"
-        val response = getJsonAuthenticated(url, idToken, timeoutMs = 18000)
-        return@withContext parseBackendResults(response)
+        // 1. Try Authenticated Backend Search First
+        try {
+            val encodedQuery = URLEncoder.encode(trimmed, "UTF-8")
+            val url = "$BACKEND_URL/api/search?q=$encodedQuery"
+            val response = getJsonAuthenticated(url, idToken, timeoutMs = 15000)
+            val backendResults = parseBackendResults(response)
+            if (backendResults.isNotEmpty()) {
+                Log.i(TAG, "Backend search succeeded with ${backendResults.size} results for '$trimmed'")
+                return@withContext backendResults
+            }
+        } catch (e: SearchAuthException) {
+            throw e // propagate auth exception for token refresh handling
+        } catch (e: Exception) {
+            Log.w(TAG, "Backend search query failed: ${e.message}. Attempting local YouTube metadata fallback.")
+        }
+
+        // 2. Fallback: Search YouTube metadata directly via embedded engine
+        return@withContext searchLocalYouTube(trimmed)
     }
 
     suspend fun getTrending(idToken: String?): List<SearchResult> = withContext(Dispatchers.IO) {
@@ -55,23 +76,87 @@ class SearchEngine {
             throw SearchAuthException("Sign in to explore trending music.")
         }
 
-        val url = "$BACKEND_URL/api/trending"
-        val response = getJsonAuthenticated(url, idToken, timeoutMs = 18000)
-        return@withContext parseBackendResults(response)
+        try {
+            val url = "$BACKEND_URL/api/trending"
+            val response = getJsonAuthenticated(url, idToken, timeoutMs = 15000)
+            val results = parseBackendResults(response)
+            if (results.isNotEmpty()) {
+                return@withContext results
+            }
+        } catch (e: SearchAuthException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Trending fetch from backend failed: ${e.message}. Fallback to top hits.")
+        }
+
+        return@withContext searchLocalYouTube("Top Hits 2026")
+    }
+
+    private suspend fun searchLocalYouTube(query: String): List<SearchResult> = withContext(Dispatchers.IO) {
+        val results = mutableListOf<SearchResult>()
+        try {
+            val request = YoutubeDLRequest("ytsearch10:$query").apply {
+                addOption("--flat-playlist")
+                addOption("--no-warnings")
+                addOption("--geo-bypass")
+            }
+
+            val info = YoutubeDL.getInstance().getInfo(request)
+            // ytsearch returns entries
+            val id = info.id ?: ""
+            val title = info.title ?: ""
+            val uploader = info.uploader ?: ""
+            val durationSec = info.duration.toLong()
+
+            if (id.isNotBlank() && id != "ytsearch10:$query") {
+                results.add(
+                    SearchResult(
+                        videoId = id,
+                        title = title,
+                        artist = uploader,
+                        durationMs = durationSec * 1000L,
+                        thumbnailUrl = "https://i.ytimg.com/vi/$id/hqdefault.jpg",
+                        provider = "lumione",
+                        providerId = id
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Local YouTube search failed: ${e.message}")
+        }
+        return@withContext results
     }
 
     internal fun parseBackendResults(jsonStr: String): List<SearchResult> {
         val results = mutableListOf<SearchResult>()
         try {
-            val root = JSONObject(jsonStr)
-            val array = root.optJSONArray("results") ?: return emptyList()
+            val trimmed = jsonStr.trim()
+            val array: JSONArray? = if (trimmed.startsWith("[")) {
+                JSONArray(trimmed)
+            } else {
+                val root = JSONObject(trimmed)
+                root.optJSONArray("results")
+                    ?: root.optJSONArray("data")
+                    ?: root.optJSONArray("tracks")
+                    ?: root.optJSONArray("items")
+            }
+
+            if (array == null) return emptyList()
+
             for (i in 0 until array.length()) {
                 val item = array.optJSONObject(i) ?: continue
-                val id = item.optString("id", item.optString("providerId"))
+                val id = item.optString("youtubeVideoId")
+                    .ifBlank { item.optString("id") }
+                    .ifBlank { item.optString("videoId") }
+                    .ifBlank { item.optString("providerId") }
                 if (id.isBlank()) continue
-                val title = item.optString("title", "Unknown Title")
-                val artist = item.optString("artist", "Unknown Artist")
-                val durationSec = item.optLong("duration", 0L)
+
+                val title = item.optString("title")
+                    .ifBlank { item.optString("name", "Unknown Title") }
+                val artist = item.optString("artist")
+                    .ifBlank { item.optString("uploader") }
+                    .ifBlank { item.optString("channel", "Unknown Artist") }
+                val durationSec = item.optLong("duration", item.optLong("durationSec", 0L))
                 val thumbnail = item.optString("thumbnail")
                 val provider = item.optString("provider", "lumione")
                 val thumb = if (thumbnail.isNotBlank() && !thumbnail.contains("invidious")) {
@@ -88,12 +173,13 @@ class SearchEngine {
                         durationMs = durationSec * 1000L,
                         thumbnailUrl = thumb,
                         provider = provider,
-                        providerId = id
+                        providerId = id,
+                        youtubeVideoId = id
                     )
                 )
             }
         } catch (e: Exception) {
-            // ignore JSON parse errors
+            Log.e(TAG, "JSON parse error: ${e.message}")
         }
         return results
     }

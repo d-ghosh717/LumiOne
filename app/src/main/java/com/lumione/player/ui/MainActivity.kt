@@ -13,21 +13,46 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.lumione.player.R
 import com.lumione.player.auth.AuthManager
 import com.lumione.player.auth.AuthState
+import com.lumione.player.player.AudioProvider
+import com.lumione.player.player.AudioProviderRegistry
+import com.lumione.player.player.AudioStreamResult
 import com.lumione.player.queue.QueueManager
 import com.lumione.player.queue.RepeatMode
 import com.lumione.player.queue.Track
 import com.lumione.player.search.SearchAuthException
 import com.lumione.player.search.SearchEngine
 import com.lumione.player.search.SearchResult
+import com.lumione.player.service.PlaybackService
 import kotlinx.coroutines.*
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListener {
 
     private val searchEngine = SearchEngine()
     private val queueManager = QueueManager()
     private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val authManager by lazy { AuthManager(this) }
     private var accountDialog: BottomSheetDialog? = null
+
+    private var playbackService: PlaybackService? = null
+    private var isServiceBound = false
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            val lumiBinder = binder as? PlaybackService.LumiBinder
+            playbackService = lumiBinder?.getService()
+            isServiceBound = true
+            playbackService?.setListener(this@MainActivity)
+            playbackService?.let { s ->
+                updatePlayPauseIcons(s.isPlaying)
+                s.queueManager.currentTrack()?.let { updateTrackUI(it) }
+            }
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            playbackService = null
+            isServiceBound = false
+        }
+    }
 
     private val googleSignInLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -107,6 +132,15 @@ class MainActivity : AppCompatActivity() {
         setupPlayerUI()
         setupNavUI()
 
+        // Start & bind PlaybackService
+        val serviceIntent = Intent(this, PlaybackService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+        bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+
         if (authManager.isUserSignedIn()) {
             loadTrendingTracks()
         } else {
@@ -117,6 +151,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (isServiceBound) {
+            playbackService?.setListener(null)
+            unbindService(serviceConnection)
+            isServiceBound = false
+        }
         mainScope.cancel()
         searchEngine.cancel()
         authManager.cleanup()
@@ -168,7 +207,9 @@ class MainActivity : AppCompatActivity() {
             featuredTrackResult?.let { res ->
                 val track = res.toTrack()
                 val globalIndex = allLoadedResults.indexOfFirst { it.videoId == res.videoId }.coerceAtLeast(0)
-                queueManager.setQueue(buildQueueFromResults(allLoadedResults, globalIndex), 0)
+                val queue = buildQueueFromResults(allLoadedResults, globalIndex)
+                queueManager.setQueue(queue, 0)
+                playbackService?.queueManager?.setQueue(queue, 0)
                 playTrack(track)
                 showFullPlayer()
             }
@@ -179,7 +220,9 @@ class MainActivity : AppCompatActivity() {
         trackAdapter = TrackAdapter(mutableListOf()) { result, _ ->
             val track = result.toTrack()
             val globalIndex = allLoadedResults.indexOfFirst { it.videoId == result.videoId }.coerceAtLeast(0)
-            queueManager.setQueue(buildQueueFromResults(allLoadedResults, globalIndex), 0)
+            val queue = buildQueueFromResults(allLoadedResults, globalIndex)
+            queueManager.setQueue(queue, 0)
+            playbackService?.queueManager?.setQueue(queue, 0)
             playTrack(track)
             showFullPlayer()
         }
@@ -192,7 +235,7 @@ class MainActivity : AppCompatActivity() {
         updateTrackUI(track)
         trackAdapter.setCurrentPlayingTrackId(track.videoId)
         updatePlayPauseIcons(false)
-        Toast.makeText(this, "Audio playback provider pending integration", Toast.LENGTH_SHORT).show()
+        playbackService?.loadAndPlay(track)
     }
 
     // ─── Search UI ────────────────────────────────────────────────────────────
@@ -372,23 +415,28 @@ class MainActivity : AppCompatActivity() {
         fullPlayPauseBtn.setOnClickListener { togglePlayPause() }
 
         btnNext.setOnClickListener {
-            queueManager.nextTrack()?.let { playTrack(it) }
+            playbackService?.skipNext()
         }
         btnPrev.setOnClickListener {
-            queueManager.previousTrack()?.let { playTrack(it) }
+            playbackService?.skipPrevious()
         }
 
         btnShuffle.setOnClickListener {
-            queueManager.shuffleEnabled = !queueManager.shuffleEnabled
-            btnShuffle.alpha = if (queueManager.shuffleEnabled) 1.0f else 0.4f
+            val s = playbackService
+            val newShuffle = !(s?.queueManager?.shuffleEnabled ?: queueManager.shuffleEnabled)
+            queueManager.shuffleEnabled = newShuffle
+            s?.queueManager?.shuffleEnabled = newShuffle
+            btnShuffle.alpha = if (newShuffle) 1.0f else 0.4f
         }
 
         btnRepeat.setOnClickListener {
-            queueManager.repeatMode = when (queueManager.repeatMode) {
+            val nextMode = when (playbackService?.queueManager?.repeatMode ?: queueManager.repeatMode) {
                 RepeatMode.NONE -> RepeatMode.ALL
                 RepeatMode.ALL -> RepeatMode.ONE
                 RepeatMode.ONE -> RepeatMode.NONE
             }
+            queueManager.repeatMode = nextMode
+            playbackService?.queueManager?.repeatMode = nextMode
             updateRepeatIcon()
         }
 
@@ -396,8 +444,7 @@ class MainActivity : AppCompatActivity() {
             var dragging = false
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser && dragging) {
-                    val currentTrack = queueManager.currentTrack()
-                    val duration = currentTrack?.durationMs ?: 0L
+                    val duration = playbackService?.durationMs ?: (queueManager.currentTrack()?.durationMs ?: 0L)
                     val target = (progress.toLong() * duration) / 1000L
                     fullCurrentTime.text = formatMs(target)
                 }
@@ -405,6 +452,10 @@ class MainActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(sb: SeekBar?) { dragging = true }
             override fun onStopTrackingTouch(sb: SeekBar?) {
                 dragging = false
+                val progress = sb?.progress ?: 0
+                val duration = playbackService?.durationMs ?: (queueManager.currentTrack()?.durationMs ?: 0L)
+                val targetMs = (progress.toLong() * duration) / 1000L
+                playbackService?.seekTo(targetMs)
             }
         })
     }
@@ -490,7 +541,75 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun togglePlayPause() {
-        Toast.makeText(this, "Audio playback provider pending integration", Toast.LENGTH_SHORT).show()
+        val service = playbackService
+        if (service == null) {
+            Toast.makeText(this, "Playback service initializing...", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (service.isPlaying) {
+            service.pausePlayback()
+        } else {
+            val currentTrack = service.queueManager.currentTrack() ?: queueManager.currentTrack()
+            if (currentTrack != null) {
+                if (currentTrack.streamUrl.isNotBlank()) {
+                    service.resumePlayback()
+                } else {
+                    service.loadAndPlay(currentTrack)
+                }
+            } else {
+                Toast.makeText(this, "Select a track to play", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // ─── PlaybackService.PlaybackServiceListener ──────────────────────────────
+
+    override fun onTrackChanged(track: Track?) {
+        runOnUiThread {
+            if (track != null) {
+                updateTrackUI(track)
+                trackAdapter.setCurrentPlayingTrackId(track.videoId)
+            }
+        }
+    }
+
+    override fun onPlayStateChanged(playing: Boolean) {
+        runOnUiThread {
+            updatePlayPauseIcons(playing)
+        }
+    }
+
+    override fun onProgressUpdate(currentMs: Long, durationMs: Long, bufferedPct: Int) {
+        runOnUiThread {
+            fullCurrentTime.text = formatMs(currentMs)
+            fullDuration.text = formatMs(durationMs)
+            if (durationMs > 0) {
+                val progress = ((currentMs * 1000) / durationMs).toInt().coerceIn(0, 1000)
+                fullSeekBar.progress = progress
+                miniProgressBar.progress = progress
+            }
+        }
+    }
+
+    override fun onPlayerReady() {
+        runOnUiThread {
+            updatePlayPauseIcons(true)
+        }
+    }
+
+    override fun onError(code: Int) {
+        runOnUiThread {
+            if (code != 0) {
+                Toast.makeText(this, "Playback error (code: $code)", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    override fun onStreamUnavailable(track: Track, reason: String) {
+        runOnUiThread {
+            Toast.makeText(this, reason, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showFullPlayer() {
@@ -636,5 +755,8 @@ fun SearchResult.toTrack() = Track(
     artist = artist,
     durationMs = durationMs,
     thumbnailUrl = thumbnailUrl,
-    streamUrl = streamUrl
+    streamUrl = streamUrl,
+    provider = provider,
+    providerId = providerId,
+    youtubeVideoId = videoId
 )

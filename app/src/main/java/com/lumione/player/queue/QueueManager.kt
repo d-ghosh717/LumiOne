@@ -4,18 +4,20 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 
 data class Track(
-    val videoId: String, // Track ID (Audius track ID)
+    val videoId: String,
     val title: String,
     val artist: String,
     val durationMs: Long = 0L,
     val thumbnailUrl: String = "",
-    val streamUrl: String = ""
+    val streamUrl: String = "",
+    val provider: String = "lumione",
+    val providerId: String = videoId,
+    val youtubeVideoId: String = videoId
 ) {
     val trackId: String get() = videoId
 
     fun getEffectiveStreamUrl(): String {
-        if (streamUrl.isNotBlank()) return streamUrl
-        return "https://api.audius.co/v1/tracks/$videoId/stream?app_name=LumiOne"
+        return streamUrl
     }
 }
 
@@ -50,6 +52,15 @@ class QueueManager {
         val insertAt = (_currentIndex.value ?: -1) + 1
         current.add(insertAt.coerceIn(0, current.size), track)
         _queue.value = current
+    }
+
+    fun updateCurrentTrack(track: Track) {
+        val ci = _currentIndex.value ?: return
+        val current = _queue.value?.toMutableList() ?: return
+        if (ci in current.indices) {
+            current[ci] = track
+            _queue.value = current
+        }
     }
 
     fun removeAt(index: Int) {

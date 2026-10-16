@@ -4,6 +4,11 @@ plugins {
     id 'com.google.gms.google-services'
 }
 
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
 android {
     namespace 'com.lumione.player'
     compileSdk 34
@@ -15,6 +20,11 @@ android {
         versionCode 1
         versionName "1.0.0"
         multiDexEnabled true
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a'
+        }
     }
 
     buildTypes {
@@ -39,6 +49,17 @@ android {
 
     buildFeatures {
         viewBinding true
+        buildConfig true
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
     }
 }
 
@@ -77,8 +98,14 @@ dependencies {
     implementation 'com.google.firebase:firebase-auth-ktx'
     implementation 'com.google.android.gms:play-services-auth:21.0.0'
 
+    // YouTube Stream Resolver (yt-dlp native Android runtime)
+    implementation 'io.github.junkfood02.youtubedl-android:library:0.18.1'
+
     // Testing
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'androidx.arch.core:core-testing:2.2.0'
     testImplementation 'org.json:json:20231013'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'androidx.test:rules:1.5.0'
 }

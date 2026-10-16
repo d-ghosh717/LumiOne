@@ -42,6 +42,7 @@ class SearchEngineTest {
 
         val first = results[0]
         assertEquals("60ItHLz5WEA", first.videoId)
+        assertEquals("60ItHLz5WEA", first.youtubeVideoId)
         assertEquals("Alan Walker - Faded", first.title)
         assertEquals("Alan Walker", first.artist)
         assertEquals(213000L, first.durationMs)
@@ -50,11 +51,37 @@ class SearchEngineTest {
 
         val second = results[1]
         assertEquals("4NRXx6U8ABQ", second.videoId)
+        assertEquals("4NRXx6U8ABQ", second.youtubeVideoId)
         assertEquals("The Weeknd - Blinding Lights", second.title)
         assertEquals("The Weeknd", second.artist)
         assertEquals(263000L, second.durationMs)
         assertEquals("https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg", second.thumbnailUrl)
         assertEquals("lumione", second.provider)
+    }
+
+    @Test
+    fun testParseBackendResultsExplicitYoutubeVideoId() {
+        val json = """
+            {
+              "results": [
+                {
+                  "youtubeVideoId": "60ItHLz5WEA",
+                  "title": "Alan Walker - Faded",
+                  "artist": "Alan Walker",
+                  "duration": 213,
+                  "durationFormatted": "3:33",
+                  "thumbnail": "https://i.ytimg.com/vi/60ItHLz5WEA/hqdefault.jpg"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val engine = SearchEngine()
+        val results = engine.parseBackendResults(json)
+
+        assertEquals(1, results.size)
+        assertEquals("60ItHLz5WEA", results[0].videoId)
+        assertEquals("60ItHLz5WEA", results[0].youtubeVideoId)
     }
 
     @Test

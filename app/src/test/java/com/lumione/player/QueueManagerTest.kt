@@ -23,15 +23,12 @@ class QueueManagerTest {
 
     @Test
     fun testTrackStreamUrl() {
-        val trackWithDefault = Track(
+        val trackWithoutCustom = Track(
             videoId = "D8m9w",
             title = "Chill Beats",
             artist = "Lofi Producer"
         )
-        assertEquals(
-            "https://api.audius.co/v1/tracks/D8m9w/stream?app_name=LumiOne",
-            trackWithDefault.getEffectiveStreamUrl()
-        )
+        assertEquals("", trackWithoutCustom.getEffectiveStreamUrl())
 
         val trackWithCustom = Track(
             videoId = "D8m9w",

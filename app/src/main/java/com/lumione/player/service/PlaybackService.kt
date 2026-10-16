@@ -14,11 +14,18 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.lumione.player.R
+import com.lumione.player.player.AudioProviderRegistry
+import com.lumione.player.player.AudioStreamResult
 import com.lumione.player.queue.QueueManager
 import com.lumione.player.queue.Track
 import com.lumione.player.ui.MainActivity
+import kotlinx.coroutines.*
+import android.util.Log
 
 /**
  * LumiOne Foreground Playback Service powered by Android Media3 / ExoPlayer.
@@ -32,6 +39,7 @@ import com.lumione.player.ui.MainActivity
 class PlaybackService : Service() {
 
     companion object {
+        private const val TAG = "PlaybackService"
         const val CHANNEL_ID = "lumione_playback"
         const val NOTIFICATION_ID = 101
         const val ACTION_PLAY = "com.lumione.PLAY"
@@ -56,6 +64,7 @@ class PlaybackService : Service() {
     private lateinit var player: ExoPlayer
     private lateinit var mediaSession: MediaSessionCompat
     private var serviceListener: PlaybackServiceListener? = null
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val progressHandler = Handler(Looper.getMainLooper())
     private val progressRunnable = object : Runnable {
@@ -77,6 +86,7 @@ class PlaybackService : Service() {
         fun onProgressUpdate(currentMs: Long, durationMs: Long, bufferedPct: Int)
         fun onPlayerReady()
         fun onError(code: Int)
+        fun onStreamUnavailable(track: Track, reason: String) {}
     }
 
     inner class LumiBinder : Binder() {
@@ -109,6 +119,7 @@ class PlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
         stopProgressPolling()
         if (::player.isInitialized) {
             player.stop()
@@ -130,7 +141,21 @@ class PlaybackService : Service() {
             .setUsage(C.USAGE_MEDIA)
             .build()
 
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15000)
+            .setReadTimeoutMs(15000)
+            .setUserAgent("Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36")
+
+        val dataSourceFactory = DefaultDataSource.Factory(
+            applicationContext,
+            httpDataSourceFactory
+        )
+
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+
         player = ExoPlayer.Builder(applicationContext)
+            .setMediaSourceFactory(mediaSourceFactory)
             .setAudioAttributes(audioAttributes, true) // Handles Audio Focus automatically
             .setWakeMode(C.WAKE_MODE_NETWORK)          // Network & CPU wake lock during playback
             .setHandleAudioBecomingNoisy(true)         // Auto-pause when headphones unplugged
@@ -138,9 +163,19 @@ class PlaybackService : Service() {
 
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
+                val stateName = when (playbackState) {
+                    Player.STATE_IDLE -> "STATE_IDLE"
+                    Player.STATE_BUFFERING -> "STATE_BUFFERING"
+                    Player.STATE_READY -> "STATE_READY"
+                    Player.STATE_ENDED -> "STATE_ENDED"
+                    else -> "STATE_UNKNOWN($playbackState)"
+                }
+                Log.i(TAG, "[PlaybackService] onPlaybackStateChanged: $stateName (isPlaying=$isPlaying)")
+
                 when (playbackState) {
                     Player.STATE_READY -> {
                         durationMs = player.duration.coerceAtLeast(0L)
+                        Log.i(TAG, "[PlaybackService] ExoPlayer READY. durationMs=$durationMs")
                         serviceListener?.onPlayerReady()
                         updatePlaybackState()
                     }
@@ -157,6 +192,7 @@ class PlaybackService : Service() {
             }
 
             override fun onIsPlayingChanged(playing: Boolean) {
+                Log.i(TAG, "[PlaybackService] onIsPlayingChanged: $playing (currentPos=${player.currentPosition}ms)")
                 setPlaybackState(playing)
                 if (playing) {
                     startProgressPolling()
@@ -166,6 +202,19 @@ class PlaybackService : Service() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                Log.e(TAG, "[PlaybackService] ExoPlayer Error: errorCode=${error.errorCode} errorCodeName=${error.errorCodeName} message=${error.message}")
+                var currentCause: Throwable? = error.cause
+                var depth = 1
+                while (currentCause != null && depth <= 5) {
+                    Log.e(TAG, "[PlaybackService]   Caused by ($depth): ${currentCause.javaClass.name}: ${currentCause.message}")
+                    if (currentCause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+                        val body = try { String(currentCause.responseBody) } catch (_: Exception) { "" }
+                        Log.e(TAG, "[PlaybackService]   HTTP Response details: code=${currentCause.responseCode} msg=${currentCause.responseMessage} body='$body' headers=${currentCause.headerFields}")
+                    }
+                    currentCause = currentCause.cause
+                    depth++
+                }
+
                 serviceListener?.onError(error.errorCode)
                 // Auto-skip failed track gracefully after brief delay if next track exists
                 if (queueManager.hasNext()) {
@@ -181,18 +230,80 @@ class PlaybackService : Service() {
 
     fun loadAndPlay(track: Track) {
         if (!::player.isInitialized) return
-        val streamUrl = track.getEffectiveStreamUrl()
-        val mediaItem = MediaItem.Builder()
-            .setUri(streamUrl)
-            .setMediaId(track.trackId)
-            .build()
+        Log.i(TAG, "[PlaybackService] loadAndPlay called for '${track.title}' (videoId=${track.videoId})")
+        notifyTrackChanged(track)
 
-        player.setMediaItem(mediaItem)
+        val directStreamUrl = track.getEffectiveStreamUrl()
+        // If track already has a valid direct stream (like a radio stream), play it directly
+        if (directStreamUrl.isNotBlank() && (track.provider.equals("tunein", ignoreCase = true) || directStreamUrl.startsWith("http://") || directStreamUrl.startsWith("https://") && !directStreamUrl.contains("googlevideo.com"))) {
+            Log.i(TAG, "[PlaybackService] Using existing stream URL for '${track.title}'")
+            playStream(track, directStreamUrl)
+            return
+        }
+
+        // Asynchronously resolve fresh stream from active AudioProvider
+        serviceScope.launch {
+            val audioProvider = AudioProviderRegistry.getProvider()
+            Log.i(TAG, "[PlaybackService] Resolving fresh stream for '${track.title}' via ${audioProvider.providerName}")
+            when (val result = audioProvider.resolveStreamUrl(track)) {
+                is AudioStreamResult.Success -> {
+                    Log.i(TAG, "[PlaybackService] Successfully resolved stream for '${track.title}', handing off to ExoPlayer")
+                    val resolvedTrack = track.copy(streamUrl = result.streamUrl)
+                    queueManager.updateCurrentTrack(resolvedTrack)
+                    playStream(resolvedTrack, result.streamUrl, result.headers)
+                }
+                is AudioStreamResult.Unavailable -> {
+                    Log.w(TAG, "[PlaybackService] Stream unavailable for '${track.title}': ${result.reason}")
+                    setPlaybackState(false)
+                    serviceListener?.onStreamUnavailable(track, result.reason)
+                    updateNotification()
+                }
+                is AudioStreamResult.Error -> {
+                    Log.e(TAG, "[PlaybackService] Resolution error for '${track.title}': ${result.throwable.message}", result.throwable)
+                    setPlaybackState(false)
+                    serviceListener?.onError(-1)
+                    updateNotification()
+                }
+            }
+        }
+    }
+
+    private fun playStream(track: Track, streamUrl: String, headers: Map<String, String> = emptyMap()) {
+        Log.i(TAG, "[PlaybackService] playStream START for '${track.title}' (headers: ${headers.keys})")
+
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15000)
+            .setReadTimeoutMs(15000)
+
+        val customUserAgent = headers.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value
+        if (!customUserAgent.isNullOrBlank()) {
+            Log.i(TAG, "[PlaybackService] Setting User-Agent on ExoPlayer: $customUserAgent")
+            httpDataSourceFactory.setUserAgent(customUserAgent)
+        } else {
+            httpDataSourceFactory.setUserAgent("Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36")
+        }
+
+        val extraHeaders = headers.filterNot {
+            it.key.equals("User-Agent", ignoreCase = true) ||
+            it.key.startsWith("Sec-", ignoreCase = true) ||
+            it.key.equals("Accept", ignoreCase = true)
+        }
+        if (extraHeaders.isNotEmpty()) {
+            httpDataSourceFactory.setDefaultRequestProperties(extraHeaders)
+        }
+
+        val dataSourceFactory = DefaultDataSource.Factory(applicationContext, httpDataSourceFactory)
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+        val mediaSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(streamUrl))
+
+        player.setMediaSource(mediaSource)
         player.prepare()
         player.play()
         updateMediaSessionMetadata(track)
         notifyTrackChanged(track)
         updateNotification()
+        Log.i(TAG, "[PlaybackService] player.setMediaSource, prepare() & play() dispatched")
     }
 
     fun loadAndQueue(track: Track) {

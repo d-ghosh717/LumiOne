@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/libraryRootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/bg_app_gradient"
+    android:paddingTop="36dp">
+
+    <!-- Header with Actions -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="20dp"
+        android:paddingBottom="14dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Your Library"
+            android:textColor="@color/text_primary"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:fontFamily="@font/plus_jakarta_sans" />
+
+        <!-- Header Actions Container -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:orientation="horizontal">
+
+            <!-- New Playlist Action Button -->
+            <TextView
+                android:id="@+id/btnNewPlaylistHeader"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_category_pill_active"
+                android:paddingHorizontal="14dp"
+                android:paddingVertical="6dp"
+                android:text="+ Playlist"
+                android:textColor="@color/text_on_cyan"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <!-- Clear Action Button for History/Favorites -->
+            <TextView
+                android:id="@+id/btnLibraryAction"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_chip_pill"
+                android:paddingHorizontal="14dp"
+                android:paddingVertical="6dp"
+                android:text="Clear"
+                android:textColor="@color/primary_cyan"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:visibility="gone" />
+        </LinearLayout>
+    </RelativeLayout>
+
+    <!-- Sub-Tabs: Playlists | Favorites | History | Queue -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:overScrollMode="never"
+        android:paddingBottom="16dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="20dp">
+
+            <TextView
+                android:id="@+id/tabPlaylists"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_category_pill_active"
+                android:gravity="center"
+                android:paddingHorizontal="18dp"
+                android:text="Playlists"
+                android:textColor="@color/text_on_cyan"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/tabFavorites"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_chip_pill"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="Favorites"
+                android:textColor="@color/text_muted"
+                android:textSize="13sp"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/tabHistory"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_chip_pill"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="History"
+                android:textColor="@color/text_muted"
+                android:textSize="13sp"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/tabQueue"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_chip_pill"
+                android:gravity="center"
+                android:paddingHorizontal="16dp"
+                android:text="Queue"
+                android:textColor="@color/text_muted"
+                android:textSize="13sp"
+                android:fontFamily="@font/plus_jakarta_sans" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- Count Label -->
+    <TextView
+        android:id="@+id/libraryCountLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="20dp"
+        android:paddingBottom="8dp"
+        android:textColor="@color/text_dim"
+        android:textSize="12sp"
+        android:fontFamily="@font/manrope" />
+
+    <!-- Empty State -->
+    <LinearLayout
+        android:id="@+id/libraryEmptyState"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="36dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/libraryEmptyIcon"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:src="@drawable/ic_playlist"
+            android:tint="@color/primary_dim"
+            android:contentDescription="Empty state icon" />
+
+        <TextView
+            android:id="@+id/libraryEmptyTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="No playlists yet"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:fontFamily="@font/plus_jakarta_sans" />
+
+        <TextView
+            android:id="@+id/libraryEmptyDesc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:text="Create your first personal playlist to organize your music."
+            android:textColor="@color/text_dim"
+            android:textSize="13sp"
+            android:fontFamily="@font/manrope" />
+
+        <TextView
+            android:id="@+id/btnLibraryEmptyAction"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_category_pill_active"
+            android:gravity="center"
+            android:paddingHorizontal="22dp"
+            android:text="+ Create Playlist"
+            android:textColor="@color/text_on_cyan"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:fontFamily="@font/plus_jakarta_sans" />
+    </LinearLayout>
+
+    <!-- Library Recycler List -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/libraryRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingBottom="220dp"
+        android:overScrollMode="never" />
+
+</LinearLayout>

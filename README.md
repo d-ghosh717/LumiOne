@@ -1,176 +1,55 @@
-🎧 LumiOne — Smart Music Streaming App
+# 🎧 LumiOne — Smart Music Streaming App
 
-LumiOne is a modern music player designed for smooth streaming, clean UI, and a seamless listening experience with background and off-screen playback support.
-
----
-
-🚀 Overview
-
-<<<<<<< HEAD
-### LumiOne provides:
-=======
-LumiOne provides:
->>>>>>> d0ee126 (first commit)
-
-* Instant music streaming
-* Background & screen-off playback
-* Clean, minimal interface
-* Fast and responsive experience
-<<<<<<< HEAD
+LumiOne is a modern, high-fidelity Android music streaming app designed with a dark liquid-glass aesthetic, personal playlist management, multi-provider stream resolution, and seamless background playback.
 
 ---
 
-## ⚠️ Setup (Required)
+## ✨ Features
 
-Before running the app, start the backend server:
+- **Personal Playlists**: Create, rename, delete personal playlists, and manage song memberships with instant local persistence.
+- **Personalized Profile**: Customizable listener display name, personal library shortcuts, and listening statistics.
+- **Smart Search & Trending**: Real-time song and artist discovery powered by an authenticated cloud backend and embedded metadata engine.
+- **Hybrid Playback Engine**: Seamless multi-provider audio streaming powered by Media3 / ExoPlayer with YouTube (yt-dlp) and JioSaavn high-fidelity fallback.
+- **Background & Off-Screen Playback**: Uninterrupted listening with foreground media service, lock-screen controls, and system notification integration.
+- **Rich Liquid-Glass UI**: Modern dark navy theme with electric cyan accents, interactive vinyl rotation, queue sheet, and tactile playback controls.
 
+---
+
+## 🛠️ Architecture & Tech Stack
+
+### Android Client (`/app`)
+- **Language**: Kotlin 1.9.22 (JVM 17 Target)
+- **UI**: Android Native XML with Custom Views (`VinylDiscView`, `CyanWaveformView`)
+- **Audio Engine**: AndroidX Media3 / ExoPlayer 1.2.1 (`PlaybackService`)
+- **Image Loading**: Bumptech Glide 4.16.0
+- **Authentication**: Firebase Authentication & Google Sign-In
+
+### Cloud Backend (`/backend`)
+- **Runtime**: Node.js & Express
+- **Deployment**: Render Web Service (`https://lumione.onrender.com`)
+- **Auth**: Firebase Admin SDK for authenticated request verification
+
+---
+
+## 🚀 Building & Running
+
+### Prerequisites
+- Android Studio Iguana | 2023.2.1 or newer
+- JDK 17
+- Android SDK 34 (Minimum Android 8.0 / API 26)
+
+### Run Unit Tests
 ```bash
-cd backend
-npm start
+./gradlew test
 ```
 
-Then launch the Android app.
-
-❗ The backend must be running for playback to work.
-=======
->>>>>>> d0ee126 (first commit)
-
----
-
-⚠️ Setup (Required)
-
-Before running the app, start the backend server:
-
-<<<<<<< HEAD
-* Quick song and artist search
-* Clean and responsive results
-=======
+### Build Debug APK
 ```bash
-cd backend
-npm start
+./gradlew assembleDebug
 ```
-
-Then launch the Android app.
-
-❗ The backend must be running for playback to work.
->>>>>>> d0ee126 (first commit)
-
-### 🎵 Smooth Playback
-
-<<<<<<< HEAD
-* Fast start and low latency
-* Stable streaming experience
-
-### 📱 Background & Off-Screen Play
-
-* Music continues when app is minimized
-* Works with screen turned off
-* Notification controls supported
-
-### 🎨 Clean UI
-
-* Minimal dark theme
-* Full player + mini player
-* Smooth navigation
+The APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
 ---
 
-## 🧩 How It Works
-
-### 🔄 Flow
-
-Search a song
-→ Select track
-→ App requests stream from backend
-→ Backend fetches audio stream
-→ App plays using audio engine
-=======
-✨ Key Features
-
-🔍 Smart Search
-
-* Quick song and artist search
-* Clean and responsive results
-
-🎵 Smooth Playback
-
-* Fast start and low latency
-* Stable streaming experience
-
-📱 Background & Off-Screen Play
-
-* Music continues when app is minimized
-* Works with screen turned off
-* Notification controls supported
-
-🎨 Clean UI
-
-* Minimal dark theme
-* Full player + mini player
-* Smooth navigation
->>>>>>> d0ee126 (first commit)
-
----
-
-🧩 How It Works
-
-<<<<<<< HEAD
-### Frontend (Android)
-
-* Kotlin
-* XML UI
-=======
-🔄 Flow
-
-Search a song
-→ Select track
-→ App requests stream from backend
-→ Backend fetches audio stream
-→ App plays using audio engine
->>>>>>> d0ee126 (first commit)
-
----
-
-🛠️ Tech Stack
-
-Frontend (Android)
-
-* Kotlin
-* XML UI
-
-Backend
-
-* Node.js
-* Handles streaming and data fetching
-
-
----
-
-<<<<<<< HEAD
-## ⚠️ Notes
-=======
-⚠️ Notes
->>>>>>> d0ee126 (first commit)
-
-* Ensure backend is running before using the app
-* Works best when device and server are on the same network
-
----
-
-<<<<<<< HEAD
-## 🏁 Conclusion
-=======
-🏁 Conclusion
->>>>>>> d0ee126 (first commit)
-
-LumiOne delivers a smooth and reliable music experience with background playback and a clean interface.
-
----
-
-<<<<<<< HEAD
-## ⭐ Support
-=======
-⭐ Support
->>>>>>> d0ee126 (first commit)
-
-If you like LumiOne, consider giving it a star 🚀
+## 📄 License
+All rights reserved.

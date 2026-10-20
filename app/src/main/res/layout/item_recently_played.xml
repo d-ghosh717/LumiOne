@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="112dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_marginEnd="14dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:background="?android:attr/selectableItemBackground">
+
+    <!-- High-Resolution Clear Album Artwork Squircle -->
+    <com.google.android.material.card.MaterialCardView
+        android:layout_width="112dp"
+        android:layout_height="112dp"
+        app:cardCornerRadius="18dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="1dp"
+        app:strokeColor="@color/subtle_border"
+        app:cardBackgroundColor="@color/surface">
+
+        <ImageView
+            android:id="@+id/recentArtwork"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="Recently played album artwork" />
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Song Title (Sensible 2-line display for readability) -->
+    <TextView
+        android:id="@+id/recentTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textColor="@color/text_primary"
+        android:textSize="12.5sp"
+        android:textStyle="bold"
+        android:fontFamily="@font/plus_jakarta_sans"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:lineSpacingExtra="1dp" />
+
+    <!-- Artist Name -->
+    <TextView
+        android:id="@+id/recentArtist"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="@color/text_muted"
+        android:textSize="11sp"
+        android:fontFamily="@font/manrope"
+        android:singleLine="true"
+        android:ellipsize="end" />
+</LinearLayout>

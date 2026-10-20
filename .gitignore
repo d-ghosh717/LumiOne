@@ -1,13 +1,12 @@
 *.iml
-.gradle
-/local.properties
-/.idea
+.gradle/
+.idea/
 .DS_Store
-/build
-/app/build
-/captures
-.externalNativeBuild
-.cxx
+build/
+app/build/
+captures/
+.externalNativeBuild/
+.cxx/
 local.properties
 node_modules/
 backend/node_modules/
@@ -16,3 +15,6 @@ client_secret*.json
 *.keystore
 *.jks
 credentials*.json
+*.log
+crash.txt
+logcat.txt

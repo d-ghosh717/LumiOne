@@ -1,25 +1,120 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Adaptive launcher icon - foreground layer -->
+<!-- Adaptive launcher icon - foreground layer reproducing reference cyan waveform icon -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Background glow circle -->
+    <!-- Dark Midnight/Navy Rounded Squircle Container with balanced white surround -->
     <path
-        android:fillColor="#BA9EFF"
-        android:fillAlpha="0.15"
-        android:pathData="M54,54m-48,0a48,48 0,1 1,96 0a48,48 0,1 1,-96 0"/>
+        android:fillColor="#090D18"
+        android:strokeColor="#1E273A"
+        android:strokeWidth="0.8"
+        android:pathData="M 41,27 L 67,27 A 14,14 0 0 1 81,41 L 81,67 A 14,14 0 0 1 67,81 L 41,81 A 14,14 0 0 1 27,67 L 27,41 A 14,14 0 0 1 41,27 Z" />
 
-    <!-- Music note -->
+    <!-- Ambient Center Cyan Glow -->
     <path
-        android:fillColor="#BA9EFF"
-        android:pathData="M54,32v22c-1.3,-0.74-2.79,-1.2-4.4,-1.2C44.7,52.8 41,56.5 41,61.4S44.7,70 49.6,70S58.2,66.3 58.2,61.4V40h8.8V32H54z"/>
+        android:fillColor="#00E5FF"
+        android:fillAlpha="0.16"
+        android:pathData="M 37,54 a 17,11 0 1 0 34,0 a 17,11 0 1 0 -34,0" />
 
-    <!-- Gradient note tail in cyan -->
+    <!-- Soft Indigo/Blue Depth Glow -->
     <path
-        android:fillColor="#53DDFC"
-        android:fillAlpha="0.85"
-        android:pathData="M62,32h5v8h-5z"/>
+        android:fillColor="#3B82F6"
+        android:fillAlpha="0.22"
+        android:pathData="M 45,54 a 9,15 0 1 0 18,0 a 9,15 0 1 0 -18,0" />
+
+    <!-- Waveform Glow Underlayer (Soft Electric Cyan) -->
+    <!-- Center bar glow -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="4.6"
+        android:strokeAlpha="0.30"
+        android:strokeLineCap="round"
+        android:pathData="M 54,38.5 L 54,69.5" />
+
+    <!-- Bar ±1 glow -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="4.2"
+        android:strokeAlpha="0.28"
+        android:strokeLineCap="round"
+        android:pathData="M 50.6,43 L 50.6,65 M 57.4,43 L 57.4,65" />
+
+    <!-- Bar ±2 glow -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3.8"
+        android:strokeAlpha="0.25"
+        android:strokeLineCap="round"
+        android:pathData="M 47.2,46 L 47.2,62 M 60.8,46 L 60.8,62" />
+
+    <!-- Bar ±3 glow -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3.4"
+        android:strokeAlpha="0.22"
+        android:strokeLineCap="round"
+        android:pathData="M 43.8,48.5 L 43.8,59.5 M 64.2,48.5 L 64.2,59.5" />
+
+    <!-- Bar ±4 glow -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3.0"
+        android:strokeAlpha="0.20"
+        android:strokeLineCap="round"
+        android:pathData="M 40.4,50.5 L 40.4,57.5 M 67.6,50.5 L 67.6,57.5" />
+
+    <!-- Bar ±5 glow -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2.8"
+        android:strokeAlpha="0.18"
+        android:strokeLineCap="round"
+        android:pathData="M 37.0,52.25 L 37.0,55.75 M 71.0,52.25 L 71.0,55.75" />
+
+    <!-- Crisp Vibrant Cyan Audio Waveform Foreground -->
+    <!-- Center bar -->
+    <path
+        android:strokeColor="#00F5FF"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:pathData="M 54,38.5 L 54,69.5" />
+
+    <!-- Bar ±1 -->
+    <path
+        android:strokeColor="#00F5FF"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:pathData="M 50.6,43 L 50.6,65 M 57.4,43 L 57.4,65" />
+
+    <!-- Bar ±2 -->
+    <path
+        android:strokeColor="#00F5FF"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:pathData="M 47.2,46 L 47.2,62 M 60.8,46 L 60.8,62" />
+
+    <!-- Bar ±3 -->
+    <path
+        android:strokeColor="#00F5FF"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:pathData="M 43.8,48.5 L 43.8,59.5 M 64.2,48.5 L 64.2,59.5" />
+
+    <!-- Bar ±4 -->
+    <path
+        android:strokeColor="#00F5FF"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:pathData="M 40.4,50.5 L 40.4,57.5 M 67.6,50.5 L 67.6,57.5" />
+
+    <!-- Bar ±5 -->
+    <path
+        android:strokeColor="#00F5FF"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:pathData="M 37.0,52.25 L 37.0,55.75 M 71.0,52.25 L 71.0,55.75" />
+
 </vector>

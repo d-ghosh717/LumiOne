@@ -1,40 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Ambient Outer Shadow & Glow -->
+    <!-- Elevated Hardware Surface -->
     <item>
         <shape android:shape="rectangle">
-            <corners android:radius="36dp" />
-            <solid android:color="#241038" />
+            <corners android:radius="24dp" />
+            <solid android:color="#19191D" />
+            <stroke android:width="1dp" android:color="#282830" />
         </shape>
     </item>
-    <!-- Main Hardware Deck Surface -->
+
+    <!-- Subtle Top Highlight -->
     <item
-        android:bottom="2dp"
-        android:left="2dp"
-        android:right="2dp"
-        android:top="2dp">
+        android:left="20dp"
+        android:right="20dp"
+        android:top="1dp"
+        android:height="1dp">
         <shape android:shape="rectangle">
-            <corners android:radius="34dp" />
-            <gradient
-                android:angle="315"
-                android:startColor="#2A1848"
-                android:centerColor="#1B0F30"
-                android:endColor="#120822"
-                android:type="linear" />
-            <stroke
-                android:width="1.5dp"
-                android:color="#4DC084FC" />
-        </shape>
-    </item>
-    <!-- Top Edge Gloss Highlight -->
-    <item
-        android:left="12dp"
-        android:right="12dp"
-        android:top="4dp"
-        android:height="1.5dp">
-        <shape android:shape="rectangle">
-            <corners android:radius="2dp" />
-            <solid android:color="#33F5D0FE" />
+            <corners android:radius="1dp" />
+            <solid android:color="#1FFFFFFF" />
         </shape>
     </item>
 </layer-list>

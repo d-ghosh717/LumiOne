@@ -11,19 +11,39 @@
         android:layout_width="match_parent"
         android:layout_height="72dp"
         android:background="@drawable/bg_track_item_normal"
-        android:paddingHorizontal="14dp"
+        android:paddingHorizontal="12dp"
         android:paddingVertical="8dp">
 
-        <!-- Circular Album Art Disc -->
-        <ImageView
-            android:id="@+id/resultThumbnail"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_centerVertical="true"
-            android:background="@drawable/bg_album_art_placeholder"
-            android:scaleType="centerCrop"
-            android:clipToOutline="true"
-            android:elevation="4dp" />
+        <!-- Circular Vinyl Disc Platter -->
+        <FrameLayout
+            android:id="@+id/resultDiscPlatter"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_centerVertical="true">
+
+            <!-- Grooved Vinyl Disc Background -->
+            <View
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_vinyl_grooves" />
+
+            <!-- Circular Center Label Album Artwork -->
+            <ImageView
+                android:id="@+id/resultThumbnail"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_album_art_placeholder"
+                android:scaleType="centerCrop"
+                android:contentDescription="Track album artwork" />
+
+            <!-- Spindle Center Hole -->
+            <View
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_vinyl_spindle" />
+        </FrameLayout>
 
         <!-- Track Info -->
         <LinearLayout
@@ -31,9 +51,9 @@
             android:layout_height="wrap_content"
             android:layout_centerVertical="true"
             android:layout_toStartOf="@+id/resultActionPill"
-            android:layout_toEndOf="@+id/resultThumbnail"
-            android:layout_marginStart="16dp"
-            android:layout_marginEnd="12dp"
+            android:layout_toEndOf="@+id/resultDiscPlatter"
+            android:layout_marginStart="14dp"
+            android:layout_marginEnd="10dp"
             android:orientation="vertical">
 
             <TextView
@@ -41,7 +61,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textColor="@color/text_primary"
-                android:textSize="16sp"
+                android:textSize="15sp"
                 android:textStyle="bold"
                 android:fontFamily="@font/plus_jakarta_sans"
                 android:letterSpacing="-0.01"
@@ -53,24 +73,24 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:textColor="@color/primary_lavender"
+                android:textColor="@color/text_muted"
                 android:textSize="13sp"
                 android:fontFamily="@font/manrope"
                 android:singleLine="true"
                 android:ellipsize="end" />
         </LinearLayout>
 
-        <!-- Tactile Play / Duration Pill Action -->
+        <!-- Play / Duration Pill Action -->
         <LinearLayout
             android:id="@+id/resultActionPill"
             android:layout_width="wrap_content"
-            android:layout_height="34dp"
+            android:layout_height="32dp"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
             android:background="@drawable/bg_play_chip"
-            android:paddingHorizontal="12dp"
+            android:paddingHorizontal="10dp"
             android:gravity="center"
-            android:elevation="2dp"
+            android:elevation="1dp"
             android:orientation="horizontal">
 
             <ImageView
@@ -78,14 +98,15 @@
                 android:layout_width="12dp"
                 android:layout_height="12dp"
                 android:src="@drawable/ic_play"
-                android:tint="@color/primary_bright"
-                android:layout_marginEnd="5dp" />
+                android:tint="@color/primary_cyan"
+                android:layout_marginEnd="5dp"
+                android:contentDescription="Play action" />
 
             <TextView
                 android:id="@+id/resultDuration"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/primary_violet"
+                android:textColor="@color/ice_blue"
                 android:textSize="11sp"
                 android:textStyle="bold"
                 android:fontFamily="@font/plus_jakarta_sans" />

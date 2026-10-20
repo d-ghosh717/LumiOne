@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="148dp"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="14dp"
+    android:orientation="vertical"
+    android:clickable="true"
+    android:focusable="true"
+    android:background="?android:attr/selectableItemBackground">
+
+    <!-- Large Rounded Album Art Card -->
+    <com.google.android.material.card.MaterialCardView
+        android:layout_width="148dp"
+        android:layout_height="148dp"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp"
+        app:cardBackgroundColor="#171820">
+
+        <ImageView
+            android:id="@+id/popularArtwork"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="Popular song album cover" />
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Song Title -->
+    <TextView
+        android:id="@+id/popularTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Song Title"
+        android:textColor="@color/text_primary"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:fontFamily="@font/plus_jakarta_sans"
+        android:singleLine="true"
+        android:ellipsize="end" />
+
+    <!-- Artist Name -->
+    <TextView
+        android:id="@+id/popularArtist"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="Artist"
+        android:textColor="@color/text_muted"
+        android:textSize="11sp"
+        android:fontFamily="@font/manrope"
+        android:singleLine="true"
+        android:ellipsize="end" />
+</LinearLayout>

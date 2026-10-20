@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/searchRootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/bg_app_gradient"
+    android:paddingTop="36dp">
+
+    <!-- Header -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Search"
+        android:textColor="@color/text_primary"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:fontFamily="@font/plus_jakarta_sans"
+        android:paddingHorizontal="20dp"
+        android:paddingBottom="14dp" />
+
+    <!-- Search Input Field Container -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginBottom="14dp"
+        android:background="@drawable/bg_search_field">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="center_vertical|start"
+            android:layout_marginStart="16dp"
+            android:src="@drawable/ic_search"
+            android:tint="@color/text_dim"
+            android:contentDescription="Search" />
+
+        <EditText
+            android:id="@+id/searchTabInput"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@null"
+            android:hint="Search songs, artists, or genres…"
+            android:textColorHint="@color/text_dim"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:fontFamily="@font/manrope"
+            android:paddingStart="48dp"
+            android:paddingEnd="48dp"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:singleLine="true" />
+
+        <ImageButton
+            android:id="@+id/btnSearchClear"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="center_vertical|end"
+            android:layout_marginEnd="10dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_close"
+            android:tint="@color/text_dim"
+            android:visibility="gone"
+            android:contentDescription="Clear search" />
+    </FrameLayout>
+
+    <!-- Quick Search Pill Chips -->
+    <HorizontalScrollView
+        android:id="@+id/searchTagsScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:clipToPadding="false"
+        android:paddingStart="20dp"
+        android:paddingEnd="12dp"
+        android:layout_marginBottom="16dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/chipTrendingPop"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_chip_pill"
+                android:gravity="center"
+                android:paddingHorizontal="14dp"
+                android:text="Top 50 Pop"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/chipLofiBeats"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_chip_pill"
+                android:gravity="center"
+                android:paddingHorizontal="14dp"
+                android:text="Lo-Fi Beats"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/chipBollywood"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_chip_pill"
+                android:gravity="center"
+                android:paddingHorizontal="14dp"
+                android:text="Bollywood"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/chipEdmEnergy"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_chip_pill"
+                android:gravity="center"
+                android:paddingHorizontal="14dp"
+                android:text="EDM Energy"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/chipAcoustic"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_chip_pill"
+                android:gravity="center"
+                android:paddingHorizontal="14dp"
+                android:text="Acoustic"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:layout_marginEnd="16dp" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- Search Status / Loading Bar -->
+    <ProgressBar
+        android:id="@+id/searchLoadingBar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+    <!-- Results Count / Header -->
+    <TextView
+        android:id="@+id/searchCountText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="20dp"
+        android:paddingBottom="8dp"
+        android:textColor="@color/text_dim"
+        android:textSize="12sp"
+        android:fontFamily="@font/manrope"
+        android:visibility="gone" />
+
+    <!-- Empty State -->
+    <LinearLayout
+        android:id="@+id/searchEmptyState"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="32dp"
+        android:visibility="visible">
+
+        <ImageView
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:src="@drawable/ic_search"
+            android:tint="@color/surface_elevated"
+            android:contentDescription="Search Icon" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Find what you love"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:fontFamily="@font/plus_jakarta_sans" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:text="Search across millions of tracks, artists, and curated audio"
+            android:textColor="@color/text_dim"
+            android:textSize="13sp"
+            android:fontFamily="@font/manrope" />
+    </LinearLayout>
+
+    <!-- Search Results Recycler -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/searchTabResultsList"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingBottom="220dp"
+        android:overScrollMode="never"
+        android:visibility="gone" />
+
+</LinearLayout>

@@ -71,11 +71,16 @@ class PlaybackService : Service() {
         override fun run() {
             if (::player.isInitialized && isPlaying) {
                 currentPositionMs = player.currentPosition.coerceAtLeast(0L)
-                durationMs = player.duration.coerceAtLeast(0L)
+                val pDuration = player.duration
+                if (pDuration > 0 && pDuration != androidx.media3.common.C.TIME_UNSET) {
+                    durationMs = pDuration
+                } else if (durationMs <= 0) {
+                    durationMs = queueManager.currentTrack()?.durationMs ?: 0L
+                }
                 bufferedPct = player.bufferedPercentage
                 serviceListener?.onProgressUpdate(currentPositionMs, durationMs, bufferedPct)
                 updatePlaybackState()
-                progressHandler.postDelayed(this, 500)
+                progressHandler.postDelayed(this, 300)
             }
         }
     }
@@ -162,6 +167,17 @@ class PlaybackService : Service() {
             .build()
 
         player.addListener(object : Player.Listener {
+            override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+                if (::player.isInitialized) {
+                    val pDuration = player.duration
+                    if (pDuration > 0 && pDuration != androidx.media3.common.C.TIME_UNSET) {
+                        durationMs = pDuration
+                        serviceListener?.onProgressUpdate(player.currentPosition.coerceAtLeast(0L), durationMs, player.bufferedPercentage)
+                        updatePlaybackState()
+                    }
+                }
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 val stateName = when (playbackState) {
                     Player.STATE_IDLE -> "STATE_IDLE"
@@ -174,9 +190,15 @@ class PlaybackService : Service() {
 
                 when (playbackState) {
                     Player.STATE_READY -> {
-                        durationMs = player.duration.coerceAtLeast(0L)
+                        val pDuration = player.duration
+                        if (pDuration > 0 && pDuration != androidx.media3.common.C.TIME_UNSET) {
+                            durationMs = pDuration
+                        } else if (durationMs <= 0) {
+                            durationMs = queueManager.currentTrack()?.durationMs ?: 0L
+                        }
                         Log.i(TAG, "[PlaybackService] ExoPlayer READY. durationMs=$durationMs")
                         serviceListener?.onPlayerReady()
+                        serviceListener?.onProgressUpdate(player.currentPosition.coerceAtLeast(0L), durationMs, player.bufferedPercentage)
                         updatePlaybackState()
                     }
                     Player.STATE_ENDED -> {
@@ -231,6 +253,9 @@ class PlaybackService : Service() {
     fun loadAndPlay(track: Track) {
         if (!::player.isInitialized) return
         Log.i(TAG, "[PlaybackService] loadAndPlay called for '${track.title}' (videoId=${track.videoId})")
+        currentPositionMs = 0L
+        durationMs = if (track.durationMs > 0) track.durationMs else 0L
+        serviceListener?.onProgressUpdate(0L, durationMs, 0)
         notifyTrackChanged(track)
 
         val directStreamUrl = track.getEffectiveStreamUrl()
@@ -324,9 +349,11 @@ class PlaybackService : Service() {
 
     fun seekTo(positionMs: Long) {
         if (::player.isInitialized) {
-            player.seekTo(positionMs)
-            currentPositionMs = positionMs
+            val safePos = positionMs.coerceAtLeast(0L)
+            player.seekTo(safePos)
+            currentPositionMs = safePos
             updatePlaybackState()
+            serviceListener?.onProgressUpdate(currentPositionMs, durationMs, bufferedPct)
         }
     }
 

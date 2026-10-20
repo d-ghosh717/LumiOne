@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/playlistCardRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="5dp"
+    android:clipToPadding="false">
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="76dp"
+        android:background="@drawable/bg_track_card"
+        android:padding="10dp"
+        android:gravity="center_vertical">
+
+        <!-- Playlist Artwork Squircle -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/playlistArtworkCard"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            app:cardCornerRadius="14dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/subtle_border"
+            app:cardBackgroundColor="@color/surface_elevated">
+
+            <!-- Fallback Icon / Design -->
+            <ImageView
+                android:id="@+id/playlistFallbackIcon"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_playlist"
+                android:tint="@color/primary_cyan"
+                android:padding="15dp"
+                android:background="@drawable/bg_curated_tile_1"
+                android:contentDescription="Playlist artwork fallback" />
+
+            <!-- Track Cover Image if available -->
+            <ImageView
+                android:id="@+id/playlistArtwork"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:contentDescription="Playlist artwork"
+                android:visibility="gone" />
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Playlist Details -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_toEndOf="@+id/playlistArtworkCard"
+            android:layout_toStartOf="@+id/btnPlaylistQuickPlay"
+            android:layout_centerVertical="true"
+            android:layout_marginStart="14dp"
+            android:layout_marginEnd="8dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/playlistTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="My Playlist"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:fontFamily="@font/plus_jakarta_sans"
+                android:singleLine="true"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/playlistSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:text="0 tracks"
+                android:textColor="@color/text_dim"
+                android:textSize="12sp"
+                android:fontFamily="@font/manrope"
+                android:singleLine="true"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Quick Play Button -->
+        <ImageButton
+            android:id="@+id/btnPlaylistQuickPlay"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:background="@drawable/bg_play_chip"
+            android:src="@drawable/ic_play"
+            android:tint="@color/primary_cyan"
+            android:contentDescription="Play playlist" />
+    </RelativeLayout>
+</LinearLayout>

@@ -1,60 +1,125 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- ─── Deep Dark Base ─────────────────────────────────────────── -->
-    <color name="background">#08070B</color>
-    <color name="background_gradient_top">#140D24</color>
-    <color name="background_gradient_bottom">#08070B</color>
-    <color name="surface">#120D1F</color>
-    <color name="surface_container">#1A1329</color>
-    <color name="surface_container_high">#221936</color>
-    <color name="surface_bright">#2D2147</color>
-    <color name="surface_card">#160F26</color>
-    <color name="surface_card_border">#2E204D</color>
+    <!-- ─── LumiOne Cyan Pulse Base & Surfaces ───────────────────────── -->
+    <color name="background">#080D1B</color>
+    <color name="bg_base">#080D1B</color>
+    <color name="surface">#111A2D</color>
+    <color name="bg_surface">#111A2D</color>
+    <color name="surface_container">#18243B</color>
+    <color name="surface_elevated">#18243B</color>
+    <color name="surface_container_high">#1F2F4D</color>
+    <color name="surface_bright">#283D63</color>
+    <color name="surface_card">#111A2D</color>
+    <color name="surface_dark">#080D1B</color>
 
-    <!-- ─── Primary Purple / Violet Accent System ─────────────────── -->
-    <color name="primary">#8B5CF6</color>
-    <color name="primary_bright">#A855F7</color>
-    <color name="primary_violet">#C084FC</color>
-    <color name="primary_lavender">#DDD6FE</color>
-    <color name="primary_dim">#6D28D9</color>
-    <color name="primary_dark">#4C1D95</color>
-    <color name="accent_fuchsia">#D946EF</color>
+    <!-- ─── Primary Accents: LumiOne Cyan Pulse ──────────────────────── -->
+    <color name="primary_cyan">#38D9FF</color>
+    <color name="electric_blue">#258BFF</color>
+    <color name="ice_blue">#8CEBFF</color>
+    <color name="deep_navy">#080D1B</color>
+    <color name="dark_surface">#111A2D</color>
+    <color name="raised_surface">#18243B</color>
+    <color name="subtle_border">#263A59</color>
 
-    <!-- ─── Glass & Translucent Tokens ────────────────────────────── -->
-    <color name="glass_dark">#D9120D22</color>
-    <color name="glass_card">#CC18112C</color>
-    <color name="glass_card_border">#33A855F7</color>
-    <color name="glass_card_border_focused">#80A855F7</color>
-    <color name="glass_highlight">#26FFFFFF</color>
-    <color name="glass_dock">#F20C0717</color>
+    <!-- Core Mapped Tokens -->
+    <color name="primary">#38D9FF</color>
+    <color name="primary_dim">#258BFF</color>
+    <color name="primary_dark">#1255A6</color>
+    <color name="coral">#38D9FF</color>
 
-    <!-- ─── Glow & Ripple ─────────────────────────────────────────── -->
-    <color name="glow_purple_soft">#40A855F7</color>
-    <color name="glow_purple_intense">#80A855F7</color>
-    <color name="glow_violet_ring">#50C084FC</color>
-    <color name="ripple_purple">#33A855F7</color>
-    <color name="ripple_white">#22FFFFFF</color>
+    <!-- Secondary & Highlights -->
+    <color name="secondary">#8CEBFF</color>
+    <color name="secondary_dim">#5BBFE0</color>
+    <color name="tertiary">#258BFF</color>
+    <color name="golden_yellow">#8CEBFF</color>
 
-    <!-- ─── Text & Content ────────────────────────────────────────── -->
-    <color name="on_background">#FFFFFF</color>
-    <color name="text_primary">#FFFFFF</color>
-    <color name="text_secondary">#DDD6FE</color>
-    <color name="text_muted">#948BA3</color>
-    <color name="text_dim">#645A77</color>
-    <color name="outline">#3B2E57</color>
-    <color name="outline_variant">#241B38</color>
+    <!-- ─── Text & Typography ─────────────────────────────────────── -->
+    <color name="text_primary">#F5FAFF</color>
+    <color name="text_secondary">#9DAEC7</color>
+    <color name="text_muted">#9DAEC7</color>
+    <color name="text_dim">#627694</color>
+    <color name="on_background">#F5FAFF</color>
+    <color name="text_on_cyan">#080D1B</color>
 
-    <!-- ─── Status / System ───────────────────────────────────────── -->
-    <color name="error">#FB7185</color>
-    <color name="success">#34D399</color>
+    <!-- ─── Translucent Surfaces & Glows ──────────────────────────── -->
+    <color name="glass_dark">#F710182D</color>
+    <color name="glass_card">#E618243B</color>
+    <color name="glass_card_border">#263A59</color>
+    <color name="glass_highlight">#1F38D9FF</color>
+    <color name="glass_dock">#FA0B1124</color>
 
-    <!-- ─── Legacy compatibility aliases ──────────────────────────── -->
-    <color name="secondary">#A855F7</color>
-    <color name="secondary_dim">#7C3AED</color>
-    <color name="tertiary">#C084FC</color>
-    <color name="on_surface_variant">#948BA3</color>
+    <!-- ─── Interaction States ────────────────────────────────────── -->
+    <color name="ripple_primary">#3338D9FF</color>
+    <color name="ripple_white">#1AFFFFFF</color>
     <color name="white_10">#1AFFFFFF</color>
-    <color name="primary_20">#33A855F7</color>
-    <color name="glass_50">#D9120D22</color>
-    <color name="glass_40">#661A1329</color>
+    <color name="white_06">#0FFFFFFF</color>
+    <color name="primary_20">#3338D9FF</color>
+
+    <!-- ─── Outlines ──────────────────────────────────────────────── -->
+    <color name="outline">#263A59</color>
+    <color name="outline_variant">#1E2C42</color>
+
+    <!-- ─── Mood Chip Colors (Cyan Pulse Harmonized) ──────────────── -->
+    <color name="mood_trending_bg">#18243B</color>
+    <color name="mood_trending_text">#38D9FF</color>
+    <color name="mood_chill_bg">#132035</color>
+    <color name="mood_chill_text">#8CEBFF</color>
+    <color name="mood_workout_bg">#162540</color>
+    <color name="mood_workout_text">#258BFF</color>
+    <color name="mood_focus_bg">#121E33</color>
+    <color name="mood_focus_text">#7EBBF0</color>
+    <color name="mood_romantic_bg">#1C1E3A</color>
+    <color name="mood_romantic_text">#A8B5FF</color>
+    <color name="mood_party_bg">#142844</color>
+    <color name="mood_party_text">#50E4FF</color>
+
+    <!-- ─── Status ────────────────────────────────────────────────── -->
+    <color name="error">#FF5252</color>
+    <color name="success">#38D9FF</color>
+
+    <!-- ─── Compatibility Aliases ─────────────────────────────────── -->
+    <color name="ink_black">#080D1B</color>
+    <color name="deep_charcoal">#080D1B</color>
+    <color name="tangerine">#38D9FF</color>
+    <color name="warm_cream">#F5FAFF</color>
+    <color name="on_surface_variant">#9DAEC7</color>
+    <color name="glass_50">#E6111A2D</color>
+    <color name="glass_40">#6618243B</color>
+    <color name="surface_charcoal">#111A2D</color>
+    <color name="surface_card_border">#263A59</color>
+    <color name="hot_pink">#38D9FF</color>
+    <color name="electric_pink">#258BFF</color>
+    <color name="sunset_amber">#8CEBFF</color>
+    <color name="rose_coral">#38D9FF</color>
+    <color name="primary_bright">#50E4FF</color>
+    <color name="primary_orange">#38D9FF</color>
+    <color name="primary_yellow">#8CEBFF</color>
+    <color name="primary_lavender">#F5FAFF</color>
+    <color name="primary_violet">#258BFF</color>
+    <color name="accent_fuchsia">#38D9FF</color>
+    <color name="glow_coral_soft">#2038D9FF</color>
+    <color name="glow_coral_intense">#4038D9FF</color>
+    <color name="glow_pink_intense">#40258BFF</color>
+    <color name="glow_purple_soft">#20258BFF</color>
+    <color name="glow_purple_intense">#40258BFF</color>
+    <color name="glow_violet_ring">#3038D9FF</color>
+    <color name="ripple_coral">#3338D9FF</color>
+    <color name="ripple_purple">#33258BFF</color>
+    <color name="background_gradient_top">#0B1124</color>
+    <color name="background_gradient_mid">#080D1B</color>
+    <color name="background_gradient_bottom">#060914</color>
+
+    <!-- Mood legacy aliases -->
+    <color name="mood_trending_start">#38D9FF</color>
+    <color name="mood_trending_end">#258BFF</color>
+    <color name="mood_chill_start">#8CEBFF</color>
+    <color name="mood_chill_end">#258BFF</color>
+    <color name="mood_workout_start">#38D9FF</color>
+    <color name="mood_workout_end">#1255A6</color>
+    <color name="mood_focus_start">#7EBBF0</color>
+    <color name="mood_focus_end">#1E3B66</color>
+    <color name="mood_romantic_start">#A8B5FF</color>
+    <color name="mood_romantic_end">#4055A8</color>
+    <color name="mood_party_start">#50E4FF</color>
+    <color name="mood_party_end">#258BFF</color>
 </resources>

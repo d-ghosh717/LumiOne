@@ -1,0 +1,665 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/homeScrollView"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:scrollbars="none"
+    android:clipToPadding="false"
+    android:background="@drawable/bg_app_gradient">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="36dp"
+        android:paddingBottom="240dp">
+
+        <!-- Top Header: Menu, Branding & Profile (Consistent 42dp Balanced Sizing) -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:paddingHorizontal="20dp"
+            android:layout_marginBottom="8dp">
+
+            <!-- Circular Menu Icon Button -->
+            <FrameLayout
+                android:id="@+id/btnHomeMenu"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:background="@drawable/bg_icon_button">
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_menu_bars"
+                    android:tint="@color/text_primary"
+                    android:contentDescription="Menu" />
+            </FrameLayout>
+
+            <!-- LumiOne Center Branding with Logo Icon -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerInParent="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:src="@drawable/ic_lumione_logo"
+                    android:layout_marginEnd="6dp"
+                    android:contentDescription="LumiOne Logo" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="LUMIONE"
+                    android:textColor="@color/primary_cyan"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.18"
+                    android:fontFamily="@font/plus_jakarta_sans" />
+            </LinearLayout>
+
+            <!-- Profile Avatar Button -->
+            <FrameLayout
+                android:id="@+id/btnHomeProfile"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:background="@drawable/bg_icon_button">
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_profile"
+                    android:tint="@color/text_primary"
+                    android:contentDescription="Profile" />
+            </FrameLayout>
+        </RelativeLayout>
+
+        <!-- Prominent Explore / Trending Header with Breathing Space -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="16dp"
+            android:text="Trending"
+            android:textColor="@color/text_primary"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            android:fontFamily="@font/plus_jakarta_sans"
+            android:letterSpacing="-0.02" />
+
+        <!-- Search Bar Trigger -->
+        <FrameLayout
+            android:id="@+id/homeSearchTrigger"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="14dp"
+            android:layout_marginBottom="18dp"
+            android:background="@drawable/bg_search_field">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_gravity="center_vertical|start"
+                android:layout_marginStart="16dp"
+                android:src="@drawable/ic_search"
+                android:tint="@color/text_muted"
+                android:contentDescription="Search" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical|start"
+                android:layout_marginStart="46dp"
+                android:text="Find songs, artists, mixes…"
+                android:textColor="@color/text_muted"
+                android:textSize="13sp"
+                android:fontFamily="@font/manrope" />
+        </FrameLayout>
+
+        <!-- Category Filter Chips (Horizontal Scroll, Reference Stadium Pills) -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:clipToPadding="false"
+            android:paddingStart="20dp"
+            android:paddingEnd="12dp"
+            android:layout_marginBottom="24dp">
+
+            <LinearLayout
+                android:id="@+id/categoryChipsContainer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <!-- Chip 0: All (Active Cyan Stadium Pill) -->
+                <TextView
+                    android:id="@+id/chipCategoryAll"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_category_pill_active"
+                    android:gravity="center"
+                    android:paddingHorizontal="20dp"
+                    android:text="All"
+                    android:textColor="@color/text_on_cyan"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:fontFamily="@font/plus_jakarta_sans"
+                    android:layout_marginEnd="8dp" />
+
+                <!-- Chip 1: Music -->
+                <TextView
+                    android:id="@+id/chipCategoryMusic"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_category_pill_inactive"
+                    android:gravity="center"
+                    android:paddingHorizontal="18dp"
+                    android:text="Music"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/plus_jakarta_sans"
+                    android:layout_marginEnd="8dp" />
+
+                <!-- Chip 2: Chill -->
+                <TextView
+                    android:id="@+id/chipCategoryChill"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_category_pill_inactive"
+                    android:gravity="center"
+                    android:paddingHorizontal="18dp"
+                    android:text="Chill"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/plus_jakarta_sans"
+                    android:layout_marginEnd="8dp" />
+
+                <!-- Chip 3: Workout -->
+                <TextView
+                    android:id="@+id/chipCategoryWorkout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_category_pill_inactive"
+                    android:gravity="center"
+                    android:paddingHorizontal="18dp"
+                    android:text="Workout"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/plus_jakarta_sans"
+                    android:layout_marginEnd="8dp" />
+
+                <!-- Chip 4: Focus -->
+                <TextView
+                    android:id="@+id/chipCategoryFocus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_category_pill_inactive"
+                    android:gravity="center"
+                    android:paddingHorizontal="18dp"
+                    android:text="Focus"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/plus_jakarta_sans"
+                    android:layout_marginEnd="8dp" />
+
+                <!-- Chip 5: Wrapped / Discover -->
+                <TextView
+                    android:id="@+id/chipCategoryWrapped"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_category_pill_inactive"
+                    android:gravity="center"
+                    android:paddingHorizontal="18dp"
+                    android:text="Wrapped"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/plus_jakarta_sans"
+                    android:layout_marginEnd="16dp" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <!-- ─── Section 1: To get you started (Featured Carousel) ──────────────── -->
+        <LinearLayout
+            android:id="@+id/homeFeaturedSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingHorizontal="20dp"
+                android:paddingBottom="12dp"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="To get you started"
+                    android:textColor="@color/text_primary"
+                    android:textSize="19sp"
+                    android:textStyle="bold"
+                    android:fontFamily="@font/plus_jakarta_sans" />
+
+                <TextView
+                    android:id="@+id/btnSeeAllStarted"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="See all"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp"
+                    android:fontFamily="@font/manrope" />
+            </LinearLayout>
+
+            <!-- Large Artwork Carousel with Snapping -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/homeFeaturedCarousel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="20dp"
+                android:paddingEnd="8dp"
+                android:clipToPadding="false"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
+                android:layout_marginBottom="28dp" />
+        </LinearLayout>
+
+        <!-- ─── Section 2: Popular songs ──────────────────────────────────────── -->
+        <LinearLayout
+            android:id="@+id/homePopularSongsSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingHorizontal="20dp"
+                android:paddingBottom="12dp"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Popular songs"
+                    android:textColor="@color/text_primary"
+                    android:textSize="19sp"
+                    android:textStyle="bold"
+                    android:fontFamily="@font/plus_jakarta_sans" />
+
+                <TextView
+                    android:id="@+id/btnSeeAllPopular"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="See all"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp"
+                    android:fontFamily="@font/manrope" />
+            </LinearLayout>
+
+            <!-- Popular Songs Horizontal Reel -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/homePopularSongsList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="20dp"
+                android:paddingEnd="8dp"
+                android:clipToPadding="false"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
+                android:layout_marginBottom="28dp" />
+        </LinearLayout>
+
+        <!-- ─── Section 3: Recently played ────────────────────────────────────── -->
+        <LinearLayout
+            android:id="@+id/homeRecentlyPlayedSection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="20dp"
+                android:paddingBottom="12dp"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Recently played"
+                    android:textColor="@color/text_primary"
+                    android:textSize="19sp"
+                    android:textStyle="bold"
+                    android:fontFamily="@font/plus_jakarta_sans" />
+            </LinearLayout>
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/homeRecentlyPlayedList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="20dp"
+                android:paddingEnd="8dp"
+                android:clipToPadding="false"
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
+                android:layout_marginBottom="28dp" />
+        </LinearLayout>
+
+        <!-- ─── Section 4: Curated Mixes ──────────────────────────────────────── -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="20dp"
+            android:paddingBottom="12dp"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Curated Mixes"
+                android:textColor="@color/text_primary"
+                android:textSize="19sp"
+                android:textStyle="bold"
+                android:fontFamily="@font/plus_jakarta_sans" />
+
+            <TextView
+                android:id="@+id/btnSeeAllMixes"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="See all"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                android:fontFamily="@font/manrope" />
+        </LinearLayout>
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:clipToPadding="false"
+            android:paddingStart="20dp"
+            android:paddingEnd="8dp"
+            android:layout_marginBottom="28dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <!-- Mix Tile 1 -->
+                <LinearLayout
+                    android:id="@+id/mixEnergyBoost"
+                    android:layout_width="136dp"
+                    android:layout_height="104dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="@drawable/bg_curated_tile_1"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="MIX 01"
+                        android:textColor="@color/golden_yellow"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Energy Boost"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="High BPM &amp; Beats"
+                        android:textColor="@color/text_muted"
+                        android:textSize="11sp"
+                        android:fontFamily="@font/manrope" />
+                </LinearLayout>
+
+                <!-- Mix Tile 2 -->
+                <LinearLayout
+                    android:id="@+id/mixDeepFocus"
+                    android:layout_width="136dp"
+                    android:layout_height="104dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="@drawable/bg_curated_tile_2"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="MIX 02"
+                        android:textColor="@color/golden_yellow"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Deep Focus"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Ambient &amp; Lo-Fi"
+                        android:textColor="@color/text_muted"
+                        android:textSize="11sp"
+                        android:fontFamily="@font/manrope" />
+                </LinearLayout>
+
+                <!-- Mix Tile 3 -->
+                <LinearLayout
+                    android:id="@+id/mixChillVibes"
+                    android:layout_width="136dp"
+                    android:layout_height="104dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="@drawable/bg_curated_tile_3"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="MIX 03"
+                        android:textColor="@color/golden_yellow"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Chill Beats"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Late Night Sound"
+                        android:textColor="@color/text_muted"
+                        android:textSize="11sp"
+                        android:fontFamily="@font/manrope" />
+                </LinearLayout>
+
+                <!-- Mix Tile 4 -->
+                <LinearLayout
+                    android:id="@+id/mixIndieDiscoveries"
+                    android:layout_width="136dp"
+                    android:layout_height="104dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="@drawable/bg_curated_tile_4"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="MIX 04"
+                        android:textColor="@color/golden_yellow"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Indie Cuts"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Fresh Discoveries"
+                        android:textColor="@color/text_muted"
+                        android:textSize="11sp"
+                        android:fontFamily="@font/manrope" />
+                </LinearLayout>
+
+                <!-- Mix Tile 5 -->
+                <LinearLayout
+                    android:id="@+id/mixDesiHits"
+                    android:layout_width="136dp"
+                    android:layout_height="104dp"
+                    android:layout_marginEnd="20dp"
+                    android:background="@drawable/bg_curated_tile_5"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="MIX 05"
+                        android:textColor="@color/golden_yellow"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Desi Hits"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Bollywood &amp; Club"
+                        android:textColor="@color/text_muted"
+                        android:textSize="11sp"
+                        android:fontFamily="@font/manrope" />
+                </LinearLayout>
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <!-- ─── Section 5: Discovery Feed: Trending Tracks List ───────────────── -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="20dp"
+            android:paddingBottom="12dp"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/homeSectionTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Trending Now"
+                android:textColor="@color/text_primary"
+                android:textSize="19sp"
+                android:textStyle="bold"
+                android:fontFamily="@font/plus_jakarta_sans" />
+
+            <TextView
+                android:id="@+id/btnHomeSeeAll"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_chip_pill"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="5dp"
+                android:text="See all"
+                android:textColor="@color/primary_cyan"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:fontFamily="@font/plus_jakarta_sans" />
+        </LinearLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/homeTrendingList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:nestedScrollingEnabled="false"
+            android:overScrollMode="never" />
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

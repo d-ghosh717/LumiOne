@@ -4,31 +4,41 @@
     android:height="120dp"
     android:viewportWidth="60"
     android:viewportHeight="120">
-    <!-- Tone Arm Base / Pivot Dial -->
+    <!-- Tone Arm Base / Pivot Dial (Precision Chrome & Navy) -->
     <path
-        android:fillColor="#3D2460"
+        android:fillColor="#1E293B"
         android:pathData="M 44,16 m -14,0 a 14,14 0 1,0 28,0 a 14,14 0 1,0 -28,0" />
     <path
-        android:fillColor="#8B5CF6"
-        android:pathData="M 44,16 m -8,0 a 8,8 0 1,0 16,0 a 8,8 0 1,0 -16,0" />
+        android:fillColor="#475569"
+        android:pathData="M 44,16 m -9,0 a 9,9 0 1,0 18,0 a 9,9 0 1,0 -18,0" />
     <path
-        android:fillColor="#DDD6FE"
-        android:pathData="M 44,16 m -3,0 a 3,3 0 1,0 6,0 a 3,3 0 1,0 -6,0" />
+        android:fillColor="#38D9FF"
+        android:pathData="M 44,16 m -5,0 a 5,5 0 1,0 10,0 a 5,5 0 1,0 -10,0" />
+    <path
+        android:fillColor="#F1F5F9"
+        android:pathData="M 44,16 m -2,0 a 2,2 0 1,0 4,0 a 2,2 0 1,0 -4,0" />
     
-    <!-- Metallic Tone Arm Rod -->
+    <!-- Metallic Tone Arm Rod (Brushed Stainless Steel) -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#C084FC"
+        android:strokeColor="#CBD5E1"
         android:strokeWidth="3.5"
         android:strokeLineCap="round"
         android:pathData="M 44,22 L 42,75 L 30,102" />
     
-    <!-- Cartridge / Stylus Head -->
+    <!-- Precision Cartridge / Headshell (Cyan Pulse Accented) -->
     <path
-        android:fillColor="#E879F9"
+        android:fillColor="#0F172A"
         android:pathData="M 27,98 L 33,105 L 29,112 L 23,105 Z" />
-    <!-- Stylus Needle Point -->
+    <path
+        android:fillColor="#258BFF"
+        android:pathData="M 28,100 L 32,105 L 29,108 L 25,103 Z" />
+
+    <!-- Stylus Needle Point (Cyan Glow & Diamond Tip) -->
+    <path
+        android:fillColor="#38D9FF"
+        android:pathData="M 23,105 L 21,110 L 25,108 Z" />
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M 23,105 L 21,110 L 25,108 Z" />
+        android:pathData="M 22,108 L 21,110 L 23,109 Z" />
 </vector>

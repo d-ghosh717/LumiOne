@@ -18,22 +18,20 @@ class LumiOneApp : Application() {
     }
 
     private fun initYoutubeDL() {
-        try {
-            YoutubeDL.getInstance().init(this)
-            Log.i(TAG, "Successfully initialized native yt-dlp runtime.")
+        appScope.launch {
+            try {
+                YoutubeDL.getInstance().init(this@LumiOneApp)
+                Log.i(TAG, "Successfully initialized native yt-dlp runtime.")
 
-            // Update yt-dlp binary in background to stay current with YouTube API changes.
-            // This is critical — the bundled binary becomes stale as YouTube updates its API.
-            appScope.launch {
                 try {
                     val status = YoutubeDL.getInstance().updateYoutubeDL(this@LumiOneApp)
                     Log.i(TAG, "yt-dlp update check result: $status")
-                } catch (e: Exception) {
-                    Log.w(TAG, "yt-dlp update check failed (non-fatal, using bundled version): ${e.message}")
+                } catch (t: Throwable) {
+                    Log.w(TAG, "yt-dlp update check failed (non-fatal, using bundled version): ${t.message}")
                 }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed to initialize native yt-dlp runtime: ${t.message}", t)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize native yt-dlp runtime: ${e.message}", e)
         }
     }
 

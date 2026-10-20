@@ -6,9 +6,11 @@ import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.Locale
 
 class SearchAuthException(message: String) : Exception(message)
 
@@ -24,15 +26,162 @@ data class SearchResult(
     val repostCount: Long = 0,
     val provider: String = "lumione",
     val providerId: String = videoId,
-    val youtubeVideoId: String = videoId
+    val youtubeVideoId: String = videoId,
+    val recommendationReason: String = ""
 ) {
     val trackId: String get() = videoId
 }
 
 /**
- * Authenticated Search Engine for LumiOne Player with automatic fallback.
- * Sends verified Firebase ID token to LumiOne backend to retrieve music metadata.
- * If backend search is unavailable or returns no results, seamlessly searches YouTube metadata locally.
+ * Normalization, canonical key extraction, and deduplication engine for music tracks.
+ */
+object TrackNormalizer {
+    private val PUBLISHING_TAGS_REGEX = Regex(
+        "(?i)\\b(official\\s*(music\\s*)?video|official\\s*audio|official\\s*lyric\\s*video|official\\s*visualizer|lyrics?|visualizer|hd|4k|remaster(ed)?(\\s*\\d{4})?|explicit|audio|video|original mix)\\b"
+    )
+    private val BRACKETED_FEAT_REGEX = Regex(
+        "(?i)\\[[^\\]]*(feat\\.?|ft\\.?|featuring)[^\\]]*\\]|\\([^)]*(feat\\.?|ft\\.?|featuring)[^)]*\\)"
+    )
+    private val STANDALONE_FEAT_REGEX = Regex(
+        "(?i)\\b(feat\\.?|ft\\.?|featuring)\\b.*$"
+    )
+    private val MODIFIERS_REGEX = Regex(
+        "(?i)\\b(slowed|reverb|sped\\s*up|speed\\s*up|nightcore|daycore|lo-?fi|lo\\s*fi|chill\\s*beats|remix|rework|bootleg|flip|vip|mashup|cover|acoustic|piano\\s*cover|guitar\\s*cover|violin\\s*cover|orchestral?|instrumental(\\s*version)?|karaoke|live(\\s*in|\\s*at|\\s*session)?|bass\\s*boosted|8d(\\s*audio)?|1\\s*hour|10\\s*hours?|loop)\\b"
+    )
+
+    fun cleanTitle(title: String): String {
+        return title
+            .replace(BRACKETED_FEAT_REGEX, " ")
+            .replace(STANDALONE_FEAT_REGEX, " ")
+            .replace(PUBLISHING_TAGS_REGEX, " ")
+            .replace(Regex("[\\[\\](){}\"']"), " ")
+            .replace(Regex("[^a-zA-Z0-9\\s]"), " ")
+            .lowercase(Locale.ROOT)
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    fun cleanArtist(artist: String): String {
+        return artist
+            .replace(BRACKETED_FEAT_REGEX, " ")
+            .replace(STANDALONE_FEAT_REGEX, " ")
+            .replace(Regex("(?i)\\b(vevo|topic|records|music|official|channel)\\b"), " ")
+            .replace(Regex("[^a-zA-Z0-9\\s]"), " ")
+            .lowercase(Locale.ROOT)
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    fun extractCoreTitle(title: String): String {
+        val cleaned = cleanTitle(title)
+        return cleaned.replace(MODIFIERS_REGEX, " ").replace(Regex("\\s+"), " ").trim()
+    }
+
+    fun detectModifier(title: String): String? {
+        val match = MODIFIERS_REGEX.find(title)
+        return match?.value?.lowercase(Locale.ROOT)
+    }
+
+    fun extractCanonicalKey(title: String, artist: String): String {
+        var rawTitle = title
+        var rawArtist = artist
+
+        if (rawTitle.contains(" - ")) {
+            val parts = rawTitle.split(" - ")
+            if (parts.size >= 2) {
+                val prefix = parts[0].trim()
+                val suffix = parts.subList(1, parts.size).joinToString(" - ").trim()
+                val genericChannelRegex = Regex("(?i)(channel|remix|lofi|slowed|beats|music|official|records|guy|tv|topic|vevo)")
+                if (prefix.isNotEmpty() && suffix.isNotEmpty()) {
+                    if (rawArtist.isBlank() || genericChannelRegex.containsMatchIn(rawArtist) || cleanArtist(prefix) == cleanArtist(rawArtist)) {
+                        rawArtist = prefix
+                        rawTitle = suffix
+                    }
+                }
+            }
+        }
+
+        val cArtist = cleanArtist(rawArtist)
+        var cCoreTitle = extractCoreTitle(rawTitle)
+        if (cArtist.isNotEmpty() && cCoreTitle.contains(cArtist)) {
+            cCoreTitle = cCoreTitle.replace(cArtist, " ").replace(Regex("\\s+"), " ").trim()
+        }
+        if (cCoreTitle.isEmpty()) cCoreTitle = cleanTitle(rawTitle)
+        return "$cArtist:::$cCoreTitle"
+    }
+
+    fun deduplicateAndFilter(
+        candidates: List<SearchResult>,
+        allowAlternateVersions: Boolean = false,
+        maxPerArtist: Int = 2,
+        seedKeysToExclude: Set<String> = emptySet()
+    ): List<SearchResult> {
+        val clusters = mutableMapOf<String, MutableList<SearchResult>>()
+        val excludedCoreTitles = seedKeysToExclude.map {
+            val parts = it.split(":::")
+            if (parts.size >= 2) parts[1] else it
+        }.filter { it.isNotBlank() }.toSet()
+
+        for (item in candidates) {
+            if (!SearchEngine.isMusicTrack(item.title, item.artist, item.durationMs)) continue
+            val canonicalKey = extractCanonicalKey(item.title, item.artist)
+            val coreTitle = extractCoreTitle(item.title)
+            if (seedKeysToExclude.contains(canonicalKey) || (coreTitle.isNotEmpty() && excludedCoreTitles.contains(coreTitle))) continue
+            var targetClusterKey = canonicalKey
+            for ((key, clusterItems) in clusters) {
+                val existingCore = extractCoreTitle(clusterItems.firstOrNull()?.title ?: "")
+                if (existingCore.isNotEmpty() && existingCore == coreTitle && existingCore.length > 2) {
+                    targetClusterKey = key
+                    break
+                }
+            }
+
+            clusters.getOrPut(targetClusterKey) { mutableListOf() }.add(item)
+        }
+
+        val results = mutableListOf<SearchResult>()
+        val artistCountMap = mutableMapOf<String, Int>()
+
+        for ((_, variants) in clusters) {
+            variants.sortWith(Comparator { a, b ->
+                val aAlt = detectModifier(a.title) != null
+                val bAlt = detectModifier(b.title) != null
+                if (aAlt != bAlt) return@Comparator if (aAlt) 1 else -1
+
+                if (a.provider == "saavn" && b.provider != "saavn") return@Comparator -1
+                if (b.provider == "saavn" && a.provider != "saavn") return@Comparator 1
+
+                val aDurDiff = Math.abs((a.durationMs / 1000L) - 210)
+                val bDurDiff = Math.abs((b.durationMs / 1000L) - 210)
+                aDurDiff.compareTo(bDurDiff)
+            })
+
+            val bestTrack = variants.first()
+            val artistKey = cleanArtist(bestTrack.artist)
+            val currentCount = artistCountMap[artistKey] ?: 0
+            if (currentCount < maxPerArtist) {
+                results.add(bestTrack)
+                artistCountMap[artistKey] = currentCount + 1
+            }
+
+            if (allowAlternateVersions && variants.size > 1) {
+                for (i in 1 until minOf(variants.size, 2)) {
+                    val altCount = artistCountMap[artistKey] ?: 0
+                    if (altCount < maxPerArtist) {
+                        results.add(variants[i])
+                        artistCountMap[artistKey] = altCount + 1
+                    }
+                }
+            }
+        }
+
+        return results
+    }
+}
+
+/**
+ * Authenticated Search & Recommendation Engine for LumiOne Player with automatic fallback.
+ * Sends verified Firebase ID token to LumiOne backend to retrieve music metadata and recommendations.
  */
 class SearchEngine {
 
@@ -43,15 +192,15 @@ class SearchEngine {
         private const val BACKEND_URL = "https://lumione.onrender.com"
 
         private val NON_MUSIC_REGEX = Regex(
-            "(?i)\\b(gameplay|walkthrough|playthrough|let's play|lets play|gta\\s*[5v]|gta\\s*online|fortnite|roblox|minecraft|free\\s*fire|pubg|call\\s*of\\s*duty|valorant|apex\\s*legends|asmr|slime|satisfying|mukbang|unboxing|review|reacting|reaction|vlog|podcast|speedrun|challenge|tiktok\\s*compilation|livestream|live\\s*stream|shorts|breaking\\s*news)\\b"
+            "(?i)\\b(gameplay|walkthrough|playthrough|let's play|lets play|gta\\s*[5v]|gta\\s*online|fortnite|roblox|minecraft|free\\s*fire|pubg|call\\s*of\\s*duty|cod|valorant|apex\\s*legends|speedrun|cutscenes?|game\\s*trailer|asmr|mukbang|slime|satisfying|unboxing|prank|comedy video|funny video|funny\\s*moments|puzzle|riddle|challenge|diy|crafts|life\\s*hacks|vlog|daily vlog|reaction to|reacting|roast|news live|live stream|livestream|full movie|full episode|episode \\d+|season \\d+|tier list|audiobook|podcast|interview|shorts|meme|compilation|sfx|sound effects?|10 hour|1 hour loop|24/7|karaoke backing track)\\b"
         )
 
         fun isMusicTrack(title: String, artist: String, durationMs: Long): Boolean {
+            if (title.isBlank()) return false
             val combined = "$title $artist"
             if (NON_MUSIC_REGEX.containsMatchIn(combined)) {
                 return false
             }
-            // Check duration if available: normal songs are between 40s and 15 minutes (900s)
             if (durationMs > 0) {
                 val durationSec = durationMs / 1000L
                 if (durationSec < 35 || durationSec > 900) {
@@ -70,18 +219,25 @@ class SearchEngine {
             throw SearchAuthException("Sign in to search music.")
         }
 
+        val userRequestsModifier = TrackNormalizer.detectModifier(trimmed) != null
+
         // 1. Try Authenticated Backend Search First
         try {
             val encodedQuery = URLEncoder.encode(trimmed, "UTF-8")
             val url = "$BACKEND_URL/api/search?q=$encodedQuery"
             val response = getJsonAuthenticated(url, idToken, timeoutMs = 15000)
             val backendResults = parseBackendResults(response).filter { isMusicTrack(it.title, it.artist, it.durationMs) }
-            if (backendResults.isNotEmpty()) {
-                Log.i(TAG, "Backend search succeeded with ${backendResults.size} music results for '$trimmed'")
-                return@withContext backendResults
+            val cleanResults = TrackNormalizer.deduplicateAndFilter(
+                backendResults,
+                allowAlternateVersions = userRequestsModifier,
+                maxPerArtist = 3
+            )
+            if (cleanResults.isNotEmpty()) {
+                Log.i(TAG, "Backend search succeeded with ${cleanResults.size} music results for '$trimmed'")
+                return@withContext cleanResults
             }
         } catch (e: SearchAuthException) {
-            throw e // propagate auth exception for token refresh handling
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Backend search query failed: ${e.message}. Attempting JioSaavn / YouTube fallback.")
         }
@@ -89,14 +245,24 @@ class SearchEngine {
         // 2. Fallback: Search JioSaavn metadata directly (100% music catalog)
         val saavnResults = searchJioSaavn(trimmed)
         if (saavnResults.isNotEmpty()) {
-            Log.i(TAG, "JioSaavn search succeeded with ${saavnResults.size} results for '$trimmed'")
-            return@withContext saavnResults
+            val cleanSaavn = TrackNormalizer.deduplicateAndFilter(
+                saavnResults,
+                allowAlternateVersions = userRequestsModifier,
+                maxPerArtist = 3
+            )
+            Log.i(TAG, "JioSaavn search succeeded with ${cleanSaavn.size} results for '$trimmed'")
+            return@withContext cleanSaavn
         }
 
         // 3. Fallback: Search YouTube metadata directly via embedded engine with music filter
         val ytResults = searchLocalYouTube("$trimmed audio").filter { isMusicTrack(it.title, it.artist, it.durationMs) }
-        if (ytResults.isNotEmpty()) {
-            return@withContext ytResults
+        val cleanYt = TrackNormalizer.deduplicateAndFilter(
+            ytResults,
+            allowAlternateVersions = userRequestsModifier,
+            maxPerArtist = 3
+        )
+        if (cleanYt.isNotEmpty()) {
+            return@withContext cleanYt
         }
 
         return@withContext emptyList()
@@ -108,9 +274,10 @@ class SearchEngine {
                 val url = "$BACKEND_URL/api/trending"
                 val response = getJsonAuthenticated(url, idToken, timeoutMs = 15000)
                 val results = parseBackendResults(response).filter { isMusicTrack(it.title, it.artist, it.durationMs) }
-                if (results.isNotEmpty()) {
-                    Log.i(TAG, "Loaded ${results.size} trending music tracks from backend")
-                    return@withContext results
+                val clean = TrackNormalizer.deduplicateAndFilter(results, allowAlternateVersions = false)
+                if (clean.isNotEmpty()) {
+                    Log.i(TAG, "Loaded ${clean.size} trending music tracks from backend")
+                    return@withContext clean
                 }
             } catch (e: SearchAuthException) {
                 throw e
@@ -119,22 +286,162 @@ class SearchEngine {
             }
         }
 
-        // Native music discovery: JioSaavn official charts
         val chartMusic = getTrendingMusic()
         if (chartMusic.isNotEmpty()) {
-            Log.i(TAG, "Loaded ${chartMusic.size} trending music tracks from native chart discovery")
-            return@withContext chartMusic
+            val clean = TrackNormalizer.deduplicateAndFilter(chartMusic, allowAlternateVersions = false)
+            Log.i(TAG, "Loaded ${clean.size} trending music tracks from native chart discovery")
+            return@withContext clean
         }
 
         val ytTrending = searchLocalYouTube("Top Music Hits 2026").filter { isMusicTrack(it.title, it.artist, it.durationMs) }
-        if (ytTrending.isNotEmpty()) return@withContext ytTrending
-        return@withContext searchJioSaavn("Top Hits")
+        val cleanYt = TrackNormalizer.deduplicateAndFilter(ytTrending, allowAlternateVersions = false)
+        if (cleanYt.isNotEmpty()) return@withContext cleanYt
+
+        return@withContext TrackNormalizer.deduplicateAndFilter(searchJioSaavn("Top Hits"), allowAlternateVersions = false)
     }
 
-    /**
-     * Direct music discovery using official curated music chart playlists (Trending Today & English Top Hits).
-     * Provides 100% genuine song tracks, verified artists, and 500x500 album art without auth requirement.
-     */
+    suspend fun getRecommendations(
+        idToken: String?,
+        seedArtists: List<String> = emptyList(),
+        likedArtists: List<String> = emptyList(),
+        topPlayedArtists: List<String> = emptyList(),
+        likedTrackKeys: List<String> = emptyList(),
+        recentTrackKeys: List<String> = emptyList(),
+        skippedArtists: List<String> = emptyList(),
+        limit: Int = 20
+    ): List<SearchResult> = withContext(Dispatchers.IO) {
+        // 1. Try Backend Recommendation Service
+        try {
+            val payload = JSONObject().apply {
+                put("seedArtists", JSONArray(seedArtists))
+                put("likedArtists", JSONArray(likedArtists))
+                put("topPlayedArtists", JSONArray(topPlayedArtists))
+                put("likedTrackKeys", JSONArray(likedTrackKeys))
+                put("recentTrackKeys", JSONArray(recentTrackKeys))
+                put("skippedArtists", JSONArray(skippedArtists))
+                put("limit", limit)
+            }
+
+            val url = "$BACKEND_URL/api/recommendations"
+            val response = postJson(url, payload.toString(), idToken, timeoutMs = 15000)
+            val backendResults = parseBackendResults(response)
+            if (backendResults.isNotEmpty()) {
+                Log.i(TAG, "Loaded ${backendResults.size} recommendations from backend")
+                return@withContext backendResults
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Backend recommendation request failed: ${e.message}. Using native offline recommender.")
+        }
+
+        // 2. Local Fallback Recommender
+        val candidatePool = mutableListOf<SearchResult>()
+        val targetArtists = (seedArtists + topPlayedArtists + likedArtists).distinct().take(3)
+        for (artist in targetArtists) {
+            try {
+                val saavnTracks = searchJioSaavn(artist)
+                if (saavnTracks.isNotEmpty()) {
+                    candidatePool.addAll(saavnTracks.take(6))
+                }
+            } catch (_: Exception) {}
+        }
+        val chartMusic = getTrendingMusic()
+        candidatePool.addAll(chartMusic)
+
+        return@withContext rankRecommendationsLocally(
+            candidates = candidatePool,
+            seedArtists = seedArtists,
+            likedArtists = likedArtists,
+            topPlayedArtists = topPlayedArtists,
+            likedTrackKeys = likedTrackKeys,
+            recentTrackKeys = recentTrackKeys,
+            skippedArtists = skippedArtists,
+            limit = limit
+        )
+    }
+
+    fun rankRecommendationsLocally(
+        candidates: List<SearchResult>,
+        seedArtists: List<String> = emptyList(),
+        likedArtists: List<String> = emptyList(),
+        topPlayedArtists: List<String> = emptyList(),
+        likedTrackKeys: List<String> = emptyList(),
+        recentTrackKeys: List<String> = emptyList(),
+        skippedArtists: List<String> = emptyList(),
+        limit: Int = 20
+    ): List<SearchResult> {
+        val cleanCandidates = TrackNormalizer.deduplicateAndFilter(
+            candidates,
+            allowAlternateVersions = false,
+            maxPerArtist = 2,
+            seedKeysToExclude = recentTrackKeys.toSet()
+        )
+
+        val cleanLikedArtists = likedArtists.map { TrackNormalizer.cleanArtist(it) }
+        val cleanSeedArtists = seedArtists.map { TrackNormalizer.cleanArtist(it) }
+        val cleanTopArtists = topPlayedArtists.map { TrackNormalizer.cleanArtist(it) }
+        val cleanSkippedArtists = skippedArtists.map { TrackNormalizer.cleanArtist(it) }
+        val likedKeysSet = likedTrackKeys.map { it.lowercase() }.toSet()
+
+        val pool = cleanCandidates.toMutableList()
+        val selected = mutableListOf<SearchResult>()
+
+        while (pool.isNotEmpty() && selected.size < limit) {
+            var bestIndex = -1
+            var bestScore = -Double.MAX_VALUE
+
+            for (i in pool.indices) {
+                val candidate = pool[i]
+                var score = 5.0
+                val cArtist = TrackNormalizer.cleanArtist(candidate.artist)
+                val cKey = TrackNormalizer.extractCanonicalKey(candidate.title, candidate.artist).lowercase()
+
+                if (cleanLikedArtists.contains(cArtist) || cleanTopArtists.contains(cArtist)) {
+                    score += 3.5
+                } else if (cleanSeedArtists.contains(cArtist)) {
+                    score += 2.5
+                } else {
+                    score += 2.0 // Discovery bonus
+                }
+
+                if (likedKeysSet.contains(cKey)) {
+                    score += 2.0
+                }
+
+                if (cleanSkippedArtists.contains(cArtist)) {
+                    score -= 2.5
+                }
+
+                if (TrackNormalizer.detectModifier(candidate.title) != null) {
+                    score -= 5.0
+                }
+
+                val countOfThisArtist = selected.count { TrackNormalizer.cleanArtist(it.artist) == cArtist }
+                if (countOfThisArtist == 1) {
+                    score -= 3.0
+                } else if (countOfThisArtist >= 2) {
+                    score -= 10.0
+                }
+
+                if (candidate.provider == "saavn") {
+                    score += 1.0
+                }
+
+                if (score > bestScore) {
+                    bestScore = score
+                    bestIndex = i
+                }
+            }
+
+            if (bestIndex >= 0 && bestScore > 0) {
+                selected.add(pool.removeAt(bestIndex))
+            } else {
+                break
+            }
+        }
+
+        return selected
+    }
+
     suspend fun getTrendingMusic(): List<SearchResult> = withContext(Dispatchers.IO) {
         val trendingSongs = mutableListOf<SearchResult>()
         try {
@@ -151,7 +458,6 @@ class SearchEngine {
                 }
             }
 
-            // Interleave tracks for a balanced mix of global and regional hits
             val maxLen = lists.maxOfOrNull { it.size } ?: 0
             for (i in 0 until maxLen) {
                 for (list in lists) {
@@ -229,7 +535,6 @@ class SearchEngine {
             }
 
             val info = YoutubeDL.getInstance().getInfo(request)
-            // ytsearch returns entries
             val id = info.id ?: ""
             val title = info.title ?: ""
             val uploader = info.uploader ?: ""
@@ -339,6 +644,7 @@ class SearchEngine {
                 val durationSec = item.optLong("duration", item.optLong("durationSec", 0L))
                 val thumbnail = item.optString("thumbnail")
                 val provider = item.optString("provider", "lumione")
+                val reason = item.optString("recommendationReason", "")
                 val thumb = if (thumbnail.isNotBlank() && !thumbnail.contains("invidious")) {
                     thumbnail
                 } else {
@@ -354,7 +660,8 @@ class SearchEngine {
                         thumbnailUrl = thumb,
                         provider = provider,
                         providerId = id,
-                        youtubeVideoId = id
+                        youtubeVideoId = id,
+                        recommendationReason = reason
                     )
                 )
             }
@@ -364,12 +671,14 @@ class SearchEngine {
         return results
     }
 
-    private fun getJsonAuthenticated(urlStr: String, idToken: String, timeoutMs: Int = 10000): String {
+    private fun getJsonAuthenticated(urlStr: String, idToken: String?, timeoutMs: Int = 10000): String {
         val conn = URL(urlStr).openConnection() as HttpURLConnection
         conn.apply {
             requestMethod = "GET"
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("Authorization", "Bearer $idToken")
+            if (!idToken.isNullOrBlank()) {
+                setRequestProperty("Authorization", "Bearer $idToken")
+            }
             setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Mobile) LumiOne/2.0")
             instanceFollowRedirects = true
             connectTimeout = timeoutMs
@@ -385,6 +694,36 @@ class SearchEngine {
         if (responseCode !in 200..299) {
             val errorStream = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
             throw Exception("Backend error (HTTP $responseCode): $errorStream")
+        }
+
+        return conn.inputStream.bufferedReader().use { it.readText() }
+    }
+
+    private fun postJson(urlStr: String, bodyStr: String, idToken: String?, timeoutMs: Int = 10000): String {
+        val conn = URL(urlStr).openConnection() as HttpURLConnection
+        conn.apply {
+            requestMethod = "POST"
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "application/json")
+            if (!idToken.isNullOrBlank()) {
+                setRequestProperty("Authorization", "Bearer $idToken")
+            }
+            setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Mobile) LumiOne/2.0")
+            instanceFollowRedirects = true
+            connectTimeout = timeoutMs
+            readTimeout = timeoutMs
+        }
+
+        OutputStreamWriter(conn.outputStream, "UTF-8").use {
+            it.write(bodyStr)
+            it.flush()
+        }
+
+        val responseCode = conn.responseCode
+        if (responseCode !in 200..299) {
+            val errorStream = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            throw Exception("Backend POST error (HTTP $responseCode): $errorStream")
         }
 
         return conn.inputStream.bufferedReader().use { it.readText() }

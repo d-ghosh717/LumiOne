@@ -64,17 +64,31 @@ async function requireFirebaseAuth(req, res, next) {
     }
 }
 
+async function optionalFirebaseAuth(req, res, next) {
+    const authHeader = req.headers.authorization || '';
+    if (authHeader.startsWith('Bearer ')) {
+        const idToken = authHeader.split('Bearer ')[1].trim();
+        if (idToken) {
+            try {
+                const decodedToken = await admin.auth().verifyIdToken(idToken);
+                req.user = decodedToken;
+            } catch (error) {
+                console.warn(`[AUTH] Optional token verification bypassed: ${error.message}`);
+            }
+        }
+    }
+    return next();
+}
+
 const webPath = path.join(__dirname, '..', 'web');
 app.use(express.static(webPath));
 
-const NON_MUSIC_REGEX = /\b(gameplay|walkthrough|playthrough|let'?s play|gta|roblox|minecraft|fortnite|pubg|free\s*fire|bgmi|slime|asmr|mukbang|unboxing|prank|comedy video|funny video|puzzle|riddle|challenge|diy|crafts|life\s*hacks|vlog|daily vlog|reaction to|roast|news live|live stream|livestream|full movie|full episode|episode \d+|season \d+)\b/i;
+const recommender = require('./recommender');
+
+const NON_MUSIC_REGEX = recommender.NON_MUSIC_REGEX;
 
 function isMusicVideo(title, artist, durationSec) {
-    if (!title || typeof title !== 'string') return false;
-    if (durationSec > 900) return false;
-    if (durationSec > 0 && durationSec < 30) return false;
-    const combined = `${title} ${artist || ''}`;
-    return !NON_MUSIC_REGEX.test(combined);
+    return recommender.isMusicContent(title, artist, durationSec);
 }
 
 function cleanHtmlEntities(text) {
@@ -264,6 +278,116 @@ app.get('/api/trending', requireFirebaseAuth, async (req, res) => {
     return res.json({ results: fallbackResults });
 });
 
+// ─── API: Explainable Hybrid Recommendations ─────────────────────
+app.post('/api/recommendations', optionalFirebaseAuth, async (req, res) => {
+    const userIdentifier = req.user ? (req.user.email || req.user.uid) : 'Guest';
+    console.log(`[RECOMMENDATIONS] Request received for: ${userIdentifier}`);
+
+    const userProfile = req.body || {};
+    const limit = Math.min(Math.max(Number(userProfile.limit) || 20, 5), 50);
+
+    const candidates = [];
+
+    // 1. Fetch verified official charts (JioSaavn)
+    try {
+        const chartTracks = await fetchJioSaavnCharts();
+        if (chartTracks && chartTracks.length > 0) {
+            candidates.push(...chartTracks);
+        }
+    } catch (e) {
+        console.warn(`[RECOMMENDATIONS] JioSaavn chart fetch warning: ${e.message}`);
+    }
+
+    // 2. Fetch targeted candidates for seed / favorite artists if provided
+    const targetArtists = [...new Set([
+        ...(userProfile.seedArtists || []),
+        ...(userProfile.likedArtists || []),
+        ...(userProfile.topPlayedArtists || [])
+    ])].filter(Boolean).slice(0, 3);
+
+    if (targetArtists.length > 0) {
+        try {
+            const artistPromises = targetArtists.map(artist =>
+                youtubeSearch(`${artist} top songs official audio`, 8)
+            );
+            const artistResults = await Promise.all(artistPromises);
+            for (const tracks of artistResults) {
+                if (Array.isArray(tracks)) {
+                    candidates.push(...tracks);
+                }
+            }
+        } catch (e) {
+            console.warn(`[RECOMMENDATIONS] Artist seed query warning: ${e.message}`);
+        }
+    }
+
+    // Fallback if candidates pool is low
+    if (candidates.length < 10) {
+        try {
+            const fallbackHits = await youtubeSearch('top music hits 2026 official audio', 15);
+            candidates.push(...fallbackHits);
+        } catch (_) {}
+    }
+
+    // Rank candidates using our hybrid scoring engine with diversity and deduplication
+    const ranked = recommender.rankRecommendations(candidates, userProfile, limit);
+    return res.json({
+        results: ranked,
+        total: ranked.length,
+        user: userIdentifier
+    });
+});
+
+// ─── API: Related Tracks for Currently Playing Song ──────────────
+app.get('/api/recommendations/related', optionalFirebaseAuth, async (req, res) => {
+    const title = req.query.title || '';
+    const artist = req.query.artist || '';
+
+    if (!title && !artist) {
+        return res.status(400).json({ error: 'At least title or artist must be provided.' });
+    }
+
+    console.log(`[RELATED] Finding related songs for '${title}' by '${artist}'`);
+
+    const seedKey = recommender.extractCanonicalKey(title, artist);
+    const candidates = [];
+
+    // Search similar music in the same style/artist
+    const queries = [];
+    if (artist) queries.push(`${artist} similar songs music`);
+    if (title && artist) queries.push(`${artist} songs playlist`);
+    queries.push('trending music hits official audio');
+
+    try {
+        const searchPromises = queries.map(q => youtubeSearch(q, 10));
+        const searchResults = await Promise.all(searchPromises);
+        for (const tracks of searchResults) {
+            if (Array.isArray(tracks)) {
+                candidates.push(...tracks);
+            }
+        }
+    } catch (e) {
+        console.warn(`[RELATED] Search error: ${e.message}`);
+    }
+
+    // Also pull verified chart tracks for candidate diversity
+    try {
+        const chartTracks = await fetchJioSaavnCharts();
+        if (chartTracks && chartTracks.length > 0) {
+            candidates.push(...chartTracks);
+        }
+    } catch (_) {}
+
+    // Exclude the seed song itself and penalize alternate versions of it
+    const userProfile = {
+        seedArtists: [artist].filter(Boolean),
+        excludeKeys: [seedKey]
+    };
+
+    const ranked = recommender.rankRecommendations(candidates, userProfile, 12);
+    return res.json({ results: ranked });
+});
+
 // ─── API: Health Check ───────────────────────────────────────────
 app.get('/api/health', (req, res) => {
     return res.json({
@@ -287,5 +411,5 @@ if (require.main === module) {
     });
 }
 
-module.exports = { app, isMusicVideo, fetchJioSaavnCharts, youtubeSearch, formatDuration };
+module.exports = { app, isMusicVideo, fetchJioSaavnCharts, youtubeSearch, formatDuration, recommender };
 

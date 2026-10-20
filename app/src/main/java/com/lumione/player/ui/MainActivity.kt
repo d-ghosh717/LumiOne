@@ -34,6 +34,7 @@ import com.lumione.player.queue.Track
 import com.lumione.player.search.SearchAuthException
 import com.lumione.player.search.SearchEngine
 import com.lumione.player.search.SearchResult
+import com.lumione.player.search.TrackNormalizer
 import com.lumione.player.service.PlaybackService
 import kotlinx.coroutines.*
 
@@ -807,39 +808,61 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     private fun loadTrendingTracks() {
-        if (!authManager.isUserSignedIn()) {
-            homeSectionTitle.text = "Trending Music"
-            mainScope.launch {
-                try {
-                    val results = searchEngine.getTrendingMusic()
-                    if (results.isNotEmpty()) {
-                        displayTrendingResults(results)
-                    }
-                } catch (e: Exception) {
-                    Log.w("MainActivity", "Guest trending music discovery failed: ${e.message}")
-                }
-            }
-            return
+        val hasHistory = historyManager.getHistory().isNotEmpty()
+        val hasFavorites = favoritesManager.getFavorites().isNotEmpty()
+        val isPersonalized = hasHistory || hasFavorites
+
+        if (isPersonalized) {
+            homeSectionTitle.text = "Recommended for You"
+        } else {
+            homeSectionTitle.text = if (authManager.isUserSignedIn()) "Trending Now" else "Trending Music"
         }
 
-        homeSectionTitle.text = "Trending Now"
         mainScope.launch {
             try {
-                var idToken = authManager.getIdToken(forceRefresh = false)
-                var results: List<SearchResult> = emptyList()
-                try {
-                    results = searchEngine.getTrending(idToken)
-                } catch (e: SearchAuthException) {
-                    idToken = authManager.getIdToken(forceRefresh = true)
-                    results = searchEngine.getTrending(idToken)
+                var idToken: String? = null
+                if (authManager.isUserSignedIn()) {
+                    try {
+                        idToken = authManager.getIdToken(forceRefresh = false)
+                    } catch (_: Exception) {
+                        try {
+                            idToken = authManager.getIdToken(forceRefresh = true)
+                        } catch (_: Exception) {}
+                    }
                 }
-                if (results.isEmpty()) {
-                    results = searchEngine.getTrendingMusic()
+
+                val topArtists = historyManager.getTopArtists(5)
+                val favArtists = favoritesManager.getFavorites().map { it.artist }.distinct()
+                val seedArtists = (topArtists + favArtists).distinct().take(5)
+                val likedKeys = favoritesManager.getFavorites().map {
+                    TrackNormalizer.extractCanonicalKey(it.title, it.artist)
                 }
+                val recentKeys = historyManager.getHistory().take(10).map {
+                    TrackNormalizer.extractCanonicalKey(it.track.title, it.track.artist)
+                }
+                val skippedArtists = historyManager.getSkippedArtists()
+
+                val results = searchEngine.getRecommendations(
+                    idToken = idToken,
+                    seedArtists = seedArtists,
+                    likedArtists = favArtists,
+                    topPlayedArtists = topArtists,
+                    likedTrackKeys = likedKeys,
+                    recentTrackKeys = recentKeys,
+                    skippedArtists = skippedArtists,
+                    limit = 30
+                )
+
                 if (results.isNotEmpty()) {
                     displayTrendingResults(results)
+                } else {
+                    val fallback = searchEngine.getTrendingMusic()
+                    if (fallback.isNotEmpty()) {
+                        displayTrendingResults(fallback)
+                    }
                 }
             } catch (e: Exception) {
+                Log.w("MainActivity", "Recommendation loading failed: ${e.message}. Using chart fallback.")
                 try {
                     val fallback = searchEngine.getTrendingMusic()
                     if (fallback.isNotEmpty()) {
@@ -2196,6 +2219,17 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     override fun onPlayStateChanged(playing: Boolean) {
         runOnUiThread {
             updatePlayPauseIcons(playing)
+        }
+    }
+
+    override fun onTrackCompleted(track: Track) {
+        historyManager.recordCompletion(track.videoId)
+    }
+
+    override fun onTrackSkipped(track: Track, playedMs: Long) {
+        val duration = if (track.durationMs > 0) track.durationMs else 180000L
+        if (playedMs < 25000L || playedMs < (duration * 0.20)) {
+            historyManager.recordSkip(track.videoId)
         }
     }
 

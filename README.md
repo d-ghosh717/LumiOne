@@ -1,8 +1,11 @@
-# LumiOne
+# LumiOne `v1.1.0`
+
+[![Release](https://img.shields.io/badge/Release-v1.1.0-00E5FF.svg)](https://github.com/d-ghosh717/LumiOne/releases)
+[![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-0A0E1A.svg)](https://developer.android.com)
 
 > **Discover music. Build your library. Stay in the flow.**
 
-LumiOne is a native Android music player focused on music discovery, personal playlists, an immersive listening experience, and uninterrupted background playback. Designed with a deep navy interface and electric cyan accents, it combines a distinctive visual identity with a dedicated audio playback engine.
+LumiOne is a native Android music player focused on music discovery, personal playlists, an immersive listening experience, and uninterrupted background playback. Designed with a deep navy interface and electric cyan accents, it combines a distinctive visual identity with a dedicated audio playback engine. Version 1.1.0 introduces a real hybrid music recommendation engine with alternate-version deduplication and personalized listening behavior signals.
 
 ---
 
@@ -194,6 +197,7 @@ LumiOne/
 - [x] Music discovery restricted to genuine music tracks and official chart playlists.
 - [x] Seamless background audio playback with lock screen and notification controls.
 - [x] Personal playlists management with local persistence.
+- [x] **v1.1.0**: Intelligent hybrid music recommendation engine with alternate-version deduplication, listening signals (plays, completions, skips), and artist diversity.
 - [ ] Offline caching and downloaded track playback.
 - [ ] Synchronized lyrics presentation.
 - [ ] Advanced audio equalizer and audio spatializer options.

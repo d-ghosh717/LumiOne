@@ -92,6 +92,8 @@ class PlaybackService : Service() {
         fun onPlayerReady()
         fun onError(code: Int)
         fun onStreamUnavailable(track: Track, reason: String) {}
+        fun onTrackCompleted(track: Track) {}
+        fun onTrackSkipped(track: Track, playedMs: Long) {}
     }
 
     inner class LumiBinder : Binder() {
@@ -202,6 +204,10 @@ class PlaybackService : Service() {
                         updatePlaybackState()
                     }
                     Player.STATE_ENDED -> {
+                        val completedTrack = queueManager.currentTrack()
+                        if (completedTrack != null) {
+                            serviceListener?.onTrackCompleted(completedTrack)
+                        }
                         if (queueManager.hasNext()) {
                             skipNext()
                         } else {
@@ -358,6 +364,11 @@ class PlaybackService : Service() {
     }
 
     fun skipNext() {
+        val current = queueManager.currentTrack()
+        val pos = if (::player.isInitialized) player.currentPosition.coerceAtLeast(0L) else currentPositionMs
+        if (current != null) {
+            serviceListener?.onTrackSkipped(current, pos)
+        }
         val next = queueManager.nextTrack() ?: return
         loadAndPlay(next)
     }

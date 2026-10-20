@@ -2,6 +2,7 @@ package com.lumione.player.ui
 
 import android.content.*
 import android.os.*
+import android.util.Log
 import android.view.*
 import android.view.inputmethod.InputMethodManager
 import android.widget.*
@@ -807,10 +808,17 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     private fun loadTrendingTracks() {
         if (!authManager.isUserSignedIn()) {
-            homeSectionTitle.text = "Sign in to explore music"
-            featuredCarouselAdapter.updateItems(emptyList())
-            popularSongAdapter.updateItems(emptyList())
-            homeTrackAdapter.updateResults(emptyList())
+            homeSectionTitle.text = "Trending Music"
+            mainScope.launch {
+                try {
+                    val results = searchEngine.getTrendingMusic()
+                    if (results.isNotEmpty()) {
+                        displayTrendingResults(results)
+                    }
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "Guest trending music discovery failed: ${e.message}")
+                }
+            }
             return
         }
 
@@ -825,11 +833,19 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                     idToken = authManager.getIdToken(forceRefresh = true)
                     results = searchEngine.getTrending(idToken)
                 }
+                if (results.isEmpty()) {
+                    results = searchEngine.getTrendingMusic()
+                }
                 if (results.isNotEmpty()) {
                     displayTrendingResults(results)
                 }
             } catch (e: Exception) {
-                // Keep existing list on failure
+                try {
+                    val fallback = searchEngine.getTrendingMusic()
+                    if (fallback.isNotEmpty()) {
+                        displayTrendingResults(fallback)
+                    }
+                } catch (_: Exception) {}
             }
         }
     }

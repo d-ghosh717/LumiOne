@@ -41,6 +41,25 @@ class SearchEngine {
     companion object {
         private const val TAG = "SearchEngine"
         private const val BACKEND_URL = "https://lumione.onrender.com"
+
+        private val NON_MUSIC_REGEX = Regex(
+            "(?i)\\b(gameplay|walkthrough|playthrough|let's play|lets play|gta\\s*[5v]|gta\\s*online|fortnite|roblox|minecraft|free\\s*fire|pubg|call\\s*of\\s*duty|valorant|apex\\s*legends|asmr|slime|satisfying|mukbang|unboxing|review|reacting|reaction|vlog|podcast|speedrun|challenge|tiktok\\s*compilation|livestream|live\\s*stream|shorts|breaking\\s*news)\\b"
+        )
+
+        fun isMusicTrack(title: String, artist: String, durationMs: Long): Boolean {
+            val combined = "$title $artist"
+            if (NON_MUSIC_REGEX.containsMatchIn(combined)) {
+                return false
+            }
+            // Check duration if available: normal songs are between 40s and 15 minutes (900s)
+            if (durationMs > 0) {
+                val durationSec = durationMs / 1000L
+                if (durationSec < 35 || durationSec > 900) {
+                    return false
+                }
+            }
+            return true
+        }
     }
 
     suspend fun search(query: String, idToken: String?): List<SearchResult> = withContext(Dispatchers.IO) {
@@ -56,48 +75,147 @@ class SearchEngine {
             val encodedQuery = URLEncoder.encode(trimmed, "UTF-8")
             val url = "$BACKEND_URL/api/search?q=$encodedQuery"
             val response = getJsonAuthenticated(url, idToken, timeoutMs = 15000)
-            val backendResults = parseBackendResults(response)
+            val backendResults = parseBackendResults(response).filter { isMusicTrack(it.title, it.artist, it.durationMs) }
             if (backendResults.isNotEmpty()) {
-                Log.i(TAG, "Backend search succeeded with ${backendResults.size} results for '$trimmed'")
+                Log.i(TAG, "Backend search succeeded with ${backendResults.size} music results for '$trimmed'")
                 return@withContext backendResults
             }
         } catch (e: SearchAuthException) {
             throw e // propagate auth exception for token refresh handling
         } catch (e: Exception) {
-            Log.w(TAG, "Backend search query failed: ${e.message}. Attempting local YouTube metadata fallback.")
+            Log.w(TAG, "Backend search query failed: ${e.message}. Attempting JioSaavn / YouTube fallback.")
         }
 
-        // 2. Fallback: Search YouTube metadata directly via embedded engine
-        val ytResults = searchLocalYouTube(trimmed)
+        // 2. Fallback: Search JioSaavn metadata directly (100% music catalog)
+        val saavnResults = searchJioSaavn(trimmed)
+        if (saavnResults.isNotEmpty()) {
+            Log.i(TAG, "JioSaavn search succeeded with ${saavnResults.size} results for '$trimmed'")
+            return@withContext saavnResults
+        }
+
+        // 3. Fallback: Search YouTube metadata directly via embedded engine with music filter
+        val ytResults = searchLocalYouTube("$trimmed audio").filter { isMusicTrack(it.title, it.artist, it.durationMs) }
         if (ytResults.isNotEmpty()) {
             return@withContext ytResults
         }
 
-        // 3. Fallback: Search JioSaavn metadata directly
-        return@withContext searchJioSaavn(trimmed)
+        return@withContext emptyList()
     }
 
     suspend fun getTrending(idToken: String?): List<SearchResult> = withContext(Dispatchers.IO) {
-        if (idToken.isNullOrBlank()) {
-            throw SearchAuthException("Sign in to explore trending music.")
-        }
-
-        try {
-            val url = "$BACKEND_URL/api/trending"
-            val response = getJsonAuthenticated(url, idToken, timeoutMs = 15000)
-            val results = parseBackendResults(response)
-            if (results.isNotEmpty()) {
-                return@withContext results
+        if (!idToken.isNullOrBlank()) {
+            try {
+                val url = "$BACKEND_URL/api/trending"
+                val response = getJsonAuthenticated(url, idToken, timeoutMs = 15000)
+                val results = parseBackendResults(response).filter { isMusicTrack(it.title, it.artist, it.durationMs) }
+                if (results.isNotEmpty()) {
+                    Log.i(TAG, "Loaded ${results.size} trending music tracks from backend")
+                    return@withContext results
+                }
+            } catch (e: SearchAuthException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Trending fetch from backend failed: ${e.message}. Using native music discovery.")
             }
-        } catch (e: SearchAuthException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "Trending fetch from backend failed: ${e.message}. Fallback to top hits.")
         }
 
-        val ytTrending = searchLocalYouTube("Top Hits 2026")
+        // Native music discovery: JioSaavn official charts
+        val chartMusic = getTrendingMusic()
+        if (chartMusic.isNotEmpty()) {
+            Log.i(TAG, "Loaded ${chartMusic.size} trending music tracks from native chart discovery")
+            return@withContext chartMusic
+        }
+
+        val ytTrending = searchLocalYouTube("Top Music Hits 2026").filter { isMusicTrack(it.title, it.artist, it.durationMs) }
         if (ytTrending.isNotEmpty()) return@withContext ytTrending
         return@withContext searchJioSaavn("Top Hits")
+    }
+
+    /**
+     * Direct music discovery using official curated music chart playlists (Trending Today & English Top Hits).
+     * Provides 100% genuine song tracks, verified artists, and 500x500 album art without auth requirement.
+     */
+    suspend fun getTrendingMusic(): List<SearchResult> = withContext(Dispatchers.IO) {
+        val trendingSongs = mutableListOf<SearchResult>()
+        try {
+            val chartUrls = listOf(
+                "https://www.jiosaavn.com/api.php?__call=playlist.getDetails&listid=110858205&_format=json&_marker=0&ctx=web6dot0", // Trending Today
+                "https://www.jiosaavn.com/api.php?__call=playlist.getDetails&listid=1081991857&_format=json&_marker=0&ctx=web6dot0" // English Hit Songs
+            )
+
+            val lists = mutableListOf<List<SearchResult>>()
+            for (endpoint in chartUrls) {
+                val tracks = fetchChartPlaylist(endpoint)
+                if (tracks.isNotEmpty()) {
+                    lists.add(tracks)
+                }
+            }
+
+            // Interleave tracks for a balanced mix of global and regional hits
+            val maxLen = lists.maxOfOrNull { it.size } ?: 0
+            for (i in 0 until maxLen) {
+                for (list in lists) {
+                    if (i < list.size) {
+                        trendingSongs.add(list[i])
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch native trending music charts: ${e.message}")
+        }
+        return@withContext trendingSongs.take(30)
+    }
+
+    private fun fetchChartPlaylist(endpoint: String): List<SearchResult> {
+        val results = mutableListOf<SearchResult>()
+        try {
+            val url = URL(endpoint)
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 8000
+                readTimeout = 8000
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                setRequestProperty("Accept", "application/json, text/plain, */*")
+            }
+
+            if (connection.responseCode in 200..299) {
+                val jsonStr = connection.inputStream.bufferedReader().use { it.readText() }
+                val root = JSONObject(jsonStr)
+                val songs = root.optJSONArray("songs")
+                if (songs != null) {
+                    for (i in 0 until songs.length()) {
+                        val item = songs.getJSONObject(i)
+                        val id = item.optString("id", "")
+                        val title = item.optString("song", item.optString("title", ""))
+                        val artist = item.optString("primary_artists", item.optString("singers", ""))
+                        val duration = item.optLong("duration", 0L)
+                        var image = item.optString("image", "")
+                        if (image.contains("150x150")) {
+                            image = image.replace("150x150", "500x500")
+                        }
+
+                        if (id.isNotBlank() && title.isNotBlank() && isMusicTrack(title, artist, duration * 1000L)) {
+                            results.add(
+                                SearchResult(
+                                    videoId = id,
+                                    title = title,
+                                    artist = artist.ifBlank { "Unknown Artist" },
+                                    durationMs = duration * 1000L,
+                                    thumbnailUrl = image,
+                                    provider = "saavn",
+                                    providerId = id,
+                                    youtubeVideoId = ""
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            connection.disconnect()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error fetching chart playlist from $endpoint: ${e.message}")
+        }
+        return results
     }
 
     private suspend fun searchLocalYouTube(query: String): List<SearchResult> = withContext(Dispatchers.IO) {

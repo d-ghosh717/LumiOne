@@ -92,4 +92,25 @@ class SearchEngineTest {
         assertTrue(engine.parseBackendResults("""{"results": []}""").isEmpty())
         assertTrue(engine.parseBackendResults("invalid json").isEmpty())
     }
+
+    @Test
+    fun testIsMusicTrackFiltersIrrelevantContent() {
+        // Non-music content must be rejected
+        assertFalse(SearchEngine.isMusicTrack("GTA 5 LIVE: INSANE HEIST WITH FRIENDS", "GamerBoy", 3600000L))
+        assertFalse(SearchEngine.isMusicTrack("Slime ASMR Most Satisfying Video", "Relax Slime", 600000L))
+        assertFalse(SearchEngine.isMusicTrack("Minecraft 100 Days Hardcore Survival Gameplay", "Crafter", 1800000L))
+        assertFalse(SearchEngine.isMusicTrack("Roblox Brookhaven Roleplay Episode 4", "RobloxFun", 900000L))
+        assertFalse(SearchEngine.isMusicTrack("Reacting to Trending TikToks", "Reactor", 450000L))
+        assertFalse(SearchEngine.isMusicTrack("Fortnite Season 5 Battle Pass Walkthrough", "ProGamer", 800000L))
+
+        // Duration bounds: reject < 35s or > 15min (900s)
+        assertFalse(SearchEngine.isMusicTrack("Short meme clip", "Creator", 15000L))
+        assertFalse(SearchEngine.isMusicTrack("10 Hour Study Ambient Stream", "RelaxChannel", 36000000L))
+
+        // Valid music tracks must be accepted
+        assertTrue(SearchEngine.isMusicTrack("Blinding Lights", "The Weeknd", 200000L))
+        assertTrue(SearchEngine.isMusicTrack("Die With A Smile", "Lady Gaga & Bruno Mars", 250000L))
+        assertTrue(SearchEngine.isMusicTrack("Kesariya (From 'Brahmastra')", "Arijit Singh, Pritam", 268000L))
+        assertTrue(SearchEngine.isMusicTrack("Shape of You", "Ed Sheeran", 233000L))
+    }
 }

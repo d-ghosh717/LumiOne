@@ -45,7 +45,23 @@ class CompositeAudioProvider(
             }
         }
 
-        // 2. Primary On-Demand: YouTube Audio Resolver (local yt-dlp with android client)
+        // 2. Direct Provider Priority: JioSaavn (320kbps unblocked CDN streams when provider is saavn)
+        if (track.provider.equals("saavn", ignoreCase = true)) {
+            try {
+                Log.i(LOG_TAG, "Prioritizing JioSaavn resolution for saavn track '${track.title}'")
+                val saavnResult = jioSaavnAudioProvider.resolveStreamUrl(track)
+                if (saavnResult is AudioStreamResult.Success) {
+                    Log.i(TAG, "Resolved on-demand stream via JioSaavn priority for '${track.title}'")
+                    return saavnResult
+                }
+                val saavnReason = (saavnResult as? AudioStreamResult.Unavailable)?.reason ?: "JioSaavn returned no match"
+                Log.w(LOG_TAG, "JioSaavn priority failed: $saavnReason")
+            } catch (e: Exception) {
+                Log.w(LOG_TAG, "JioSaavn priority failed: ${e.message}")
+            }
+        }
+
+        // 3. Primary On-Demand: YouTube Audio Resolver (local yt-dlp with android client)
         try {
             val ytResult = youtubeAudioProvider.resolveStreamUrl(track)
             if (ytResult is AudioStreamResult.Success) {

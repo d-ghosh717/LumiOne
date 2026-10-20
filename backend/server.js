@@ -67,6 +67,71 @@ async function requireFirebaseAuth(req, res, next) {
 const webPath = path.join(__dirname, '..', 'web');
 app.use(express.static(webPath));
 
+const NON_MUSIC_REGEX = /\b(gameplay|walkthrough|playthrough|let'?s play|gta|roblox|minecraft|fortnite|pubg|free\s*fire|bgmi|slime|asmr|mukbang|unboxing|prank|comedy video|funny video|puzzle|riddle|challenge|diy|crafts|life\s*hacks|vlog|daily vlog|reaction to|roast|news live|live stream|livestream|full movie|full episode|episode \d+|season \d+)\b/i;
+
+function isMusicVideo(title, artist, durationSec) {
+    if (!title || typeof title !== 'string') return false;
+    if (durationSec > 900) return false;
+    if (durationSec > 0 && durationSec < 30) return false;
+    const combined = `${title} ${artist || ''}`;
+    return !NON_MUSIC_REGEX.test(combined);
+}
+
+function cleanHtmlEntities(text) {
+    if (!text) return '';
+    return text.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#039;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+}
+
+function fetchJsonUrl(url) {
+    return new Promise((resolve) => {
+        https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, timeout: 7000 }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try { resolve(JSON.parse(data)); } catch (e) { resolve(null); }
+            });
+        }).on('error', () => resolve(null)).on('timeout', function() { this.destroy(); resolve(null); });
+    });
+}
+
+async function fetchJioSaavnCharts() {
+    try {
+        const p1 = 'https://www.jiosaavn.com/api.php?__call=playlist.getDetails&listid=110858205&_format=json&_marker=0&ctx=web6dot0';
+        const p2 = 'https://www.jiosaavn.com/api.php?__call=playlist.getDetails&listid=1081991857&_format=json&_marker=0&ctx=web6dot0';
+        const [tHindi, tEnglish] = await Promise.all([fetchJsonUrl(p1), fetchJsonUrl(p2)]);
+
+        const hindiSongs = tHindi?.songs || tHindi?.list || [];
+        const englishSongs = tEnglish?.songs || tEnglish?.list || [];
+
+        const combined = [];
+        const max = Math.max(hindiSongs.length, englishSongs.length);
+        for (let i = 0; i < max && combined.length < 30; i++) {
+            if (i < englishSongs.length) combined.push(englishSongs[i]);
+            if (i < hindiSongs.length) combined.push(hindiSongs[i]);
+        }
+
+        return combined.map(s => {
+            let img = s.image || '';
+            if (img.includes('150x150')) img = img.replace('150x150', '500x500');
+            const durationSec = Number(s.duration) || 0;
+            return {
+                id: s.id,
+                youtubeVideoId: '',
+                title: cleanHtmlEntities(s.song || s.title || 'Unknown Title'),
+                artist: cleanHtmlEntities(s.primary_artists || s.singers || 'Unknown Artist'),
+                thumbnail: img,
+                duration: durationSec,
+                durationFormatted: formatDuration(durationSec),
+                provider: 'saavn',
+                providerId: s.id
+            };
+        }).filter(item => isMusicVideo(item.title, item.artist, item.duration));
+    } catch (e) {
+        console.error('[TRENDING] Error fetching JioSaavn charts:', e.message);
+        return [];
+    }
+}
+
 // ─── Direct YouTube Metadata Search ───────────────────────────────
 function youtubeSearch(query, maxResults = 15) {
     return new Promise((resolve) => {
@@ -113,6 +178,15 @@ function youtubeSearch(query, maxResults = 15) {
                         for (const item of itemSection) {
                             const video = item.videoRenderer;
                             if (video && video.videoId) {
+                                // Skip livestreams
+                                const badges = video.badges || [];
+                                const isLive = badges.some(b => {
+                                    const style = b?.metadataBadgeRenderer?.style || '';
+                                    const label = b?.metadataBadgeRenderer?.label || '';
+                                    return style.includes('LIVE') || label.toUpperCase().includes('LIVE');
+                                });
+                                if (isLive) continue;
+
                                 const title = video.title?.runs?.map(r => r.text).join('') || video.title?.simpleText || 'Unknown Title';
                                 const artist = video.ownerText?.runs?.map(r => r.text).join('') || 
                                                video.shortBylineText?.runs?.map(r => r.text).join('') || 'Unknown Artist';
@@ -122,6 +196,8 @@ function youtubeSearch(query, maxResults = 15) {
                                 let durationSec = 0;
                                 if (parts.length === 2) durationSec = (parts[0] || 0) * 60 + (parts[1] || 0);
                                 else if (parts.length === 3) durationSec = (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+
+                                if (!isMusicVideo(title, artist, durationSec)) continue;
 
                                 items.push({
                                     id: video.videoId,
@@ -174,8 +250,18 @@ app.get('/api/search', requireFirebaseAuth, async (req, res) => {
 // ─── API: Authenticated Trending ─────────────────────────────────
 app.get('/api/trending', requireFirebaseAuth, async (req, res) => {
     console.log(`[TRENDING] Authenticated request from ${req.user.email || req.user.uid}`);
-    const results = await youtubeSearch('top music hits 2026', 15);
-    return res.json({ results });
+    try {
+        const saavnTracks = await fetchJioSaavnCharts();
+        if (saavnTracks && saavnTracks.length > 0) {
+            console.log(`[TRENDING] Returning ${saavnTracks.length} verified music tracks from official charts`);
+            return res.json({ results: saavnTracks });
+        }
+    } catch (err) {
+        console.error('[TRENDING] JioSaavn charts failed:', err.message);
+    }
+
+    const fallbackResults = await youtubeSearch('top music hits official audio', 15);
+    return res.json({ results: fallbackResults });
 });
 
 // ─── API: Health Check ───────────────────────────────────────────
@@ -195,6 +281,11 @@ function formatDuration(seconds) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`LumiOne metadata service running on port ${PORT}`);
-});
+if (require.main === module) {
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`LumiOne metadata service running on port ${PORT}`);
+    });
+}
+
+module.exports = { app, isMusicVideo, fetchJioSaavnCharts, youtubeSearch, formatDuration };
+

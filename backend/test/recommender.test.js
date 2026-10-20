@@ -7,6 +7,7 @@ const {
     extractCanonicalKey,
     detectModifier,
     deduplicateAndPruneVersions,
+    deduplicateForQueue,
     scoreCandidate,
     rankRecommendations
 } = require('../recommender');
@@ -78,7 +79,7 @@ describe('LumiOne Recommender Module Tests', () => {
             { id: '1', title: 'Faded', artist: 'Alan Walker', duration: 213, provider: 'saavn' },
             { id: '2', title: 'Faded (Slowed + Reverb)', artist: 'Alan Walker', duration: 260, provider: 'lumione' },
             { id: '3', title: 'Alan Walker - Faded (Sped Up)', artist: 'RemixChannel', duration: 170, provider: 'lumione' },
-            { id: '4', title: 'Faded (Lo-Fi Chill Beats)', artist: 'LofiGuy', duration: 190, provider: 'lumione' },
+            { id: '4', title: 'Alan Walker - Faded (Lo-Fi Chill Beats)', artist: 'LofiGuy', duration: 190, provider: 'lumione' },
             { id: '5', title: 'Blinding Lights', artist: 'The Weeknd', duration: 200, provider: 'saavn' },
             { id: '6', title: 'Blinding Lights (Acoustic)', artist: 'The Weeknd', duration: 190, provider: 'lumione' }
         ];
@@ -122,15 +123,63 @@ describe('LumiOne Recommender Module Tests', () => {
         assert.ok(recommendations[0].recommendationReason.length > 0);
     });
 
-    test('Cold start recommendations for new user', () => {
+    test('Multiple uploads of LONOWN - worry (Slowed) across different channel names resolve to same canonical key', () => {
+        const u1 = extractCanonicalKey('LONOWN - worry (Slowed)', 'S o u n d s .');
+        const u2 = extractCanonicalKey('LONOWN - worry (Slowed + Reverb)', 'Night Drive');
+        const u3 = extractCanonicalKey('worry (slowed) - LONOWN', 'Anime Chill');
+        const u4 = extractCanonicalKey('LONOWN - worry', 'LONOWN - Topic');
+
+        assert.equal(u1, 'lonown:::worry');
+        assert.equal(u2, 'lonown:::worry');
+        assert.equal(u3, 'lonown:::worry');
+        assert.equal(u4, 'lonown:::worry');
+    });
+
+    test('Alan Walker - Faded vs ZHU - Faded vs Tyga - Faded are NOT merged and retain distinct identities', () => {
+        const k1 = extractCanonicalKey('Alan Walker - Faded', 'Alan Walker');
+        const k2 = extractCanonicalKey('ZHU - Faded', 'ZHU');
+        const k3 = extractCanonicalKey('Tyga - Faded ft. Lil Wayne', 'Tyga');
+
+        assert.equal(k1, 'alan walker:::faded');
+        assert.equal(k2, 'zhu:::faded');
+        assert.equal(k3, 'tyga:::faded');
+
+        assert.notEqual(k1, k2);
+        assert.notEqual(k1, k3);
+        assert.notEqual(k2, k3);
+
         const candidates = [
-            { id: '1', title: 'Song A', artist: 'Artist 1', duration: 200, provider: 'saavn' },
-            { id: '2', title: 'Song B', artist: 'Artist 2', duration: 210, provider: 'saavn' },
-            { id: '3', title: 'Song C', artist: 'Artist 3', duration: 220, provider: 'saavn' }
+            { id: 'aw1', title: 'Alan Walker - Faded', artist: 'Alan Walker', duration: 213 },
+            { id: 'zhu1', title: 'ZHU - Faded', artist: 'ZHU', duration: 220 },
+            { id: 'tyga1', title: 'Tyga - Faded ft. Lil Wayne', artist: 'Tyga', duration: 200 }
         ];
 
-        const coldStartResults = rankRecommendations(candidates, {}, 5);
-        assert.equal(coldStartResults.length, 3);
-        assert.equal(coldStartResults[0].title, 'Song A');
+        // Neither should be pruned as duplicate of the other
+        const deduplicated = deduplicateAndPruneVersions(candidates, { allowAlternateVersions: false });
+        assert.equal(deduplicated.length, 3);
+    });
+
+    test('deduplicateForQueue prunes duplicate uploads while keeping distinct songs and user selection', () => {
+        const searchResults = [
+            { videoId: 'w1', title: 'LONOWN - worry (Slowed)', artist: 'S o u n d s .', duration: 135 },
+            { videoId: 'w2', title: 'LONOWN - worry (Slowed + Reverb)', artist: 'Night Drive', duration: 135 },
+            { videoId: 'w3', title: 'worry (slowed) - LONOWN', artist: 'Anime Chill', duration: 135 },
+            { videoId: 'aw1', title: 'Alan Walker - Faded', artist: 'Alan Walker', duration: 213 },
+            { videoId: 'zhu1', title: 'ZHU - Faded', artist: 'ZHU', duration: 220 }
+        ];
+
+        const selectedTrack = searchResults[0]; // LONOWN - worry (Slowed)
+        const selectedKey = extractCanonicalKey(selectedTrack.title, selectedTrack.artist);
+
+        const remaining = searchResults.slice(1);
+        const queueTracks = deduplicateForQueue(remaining, selectedKey, 3);
+
+        // All other duplicate uploads of worry (w2, w3) must be filtered out!
+        assert.equal(queueTracks.some(t => t.videoId === 'w2'), false);
+        assert.equal(queueTracks.some(t => t.videoId === 'w3'), false);
+
+        // Distinct songs (Alan Walker - Faded and ZHU - Faded) must be kept!
+        assert.equal(queueTracks.some(t => t.videoId === 'aw1'), true);
+        assert.equal(queueTracks.some(t => t.videoId === 'zhu1'), true);
     });
 });

@@ -1,5 +1,6 @@
 package com.lumione.player
 
+import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import com.lumione.player.data.FavoritesManager
 import com.lumione.player.data.HistoryManager
 import com.lumione.player.queue.Track
@@ -8,9 +9,13 @@ import com.lumione.player.search.SearchResult
 import com.lumione.player.search.TrackNormalizer
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 class RecommendationEngineTest {
+
+    @get:Rule
+    val instantTaskExecutorRule = InstantTaskExecutorRule()
 
     private lateinit var searchEngine: SearchEngine
     private lateinit var fakePrefsHistory: FakeSharedPreferences
@@ -200,5 +205,86 @@ class RecommendationEngineTest {
 
         val skippedArtists = historyManager.getSkippedArtists()
         assertTrue("SpamArtist should be in skipped list", skippedArtists.contains("SpamArtist"))
+    }
+
+    @Test
+    fun testMultipleUploadsOfWorrySlowedAcrossDifferentChannelsResolveToSameKeyAndAreDeduplicatedForQueue() {
+        val u1 = TrackNormalizer.extractCanonicalKey("LONOWN - worry (Slowed)", "S o u n d s .")
+        val u2 = TrackNormalizer.extractCanonicalKey("LONOWN - worry (Slowed + Reverb)", "Night Drive")
+        val u3 = TrackNormalizer.extractCanonicalKey("worry (slowed) - LONOWN", "Anime Chill")
+        val u4 = TrackNormalizer.extractCanonicalKey("LONOWN - worry", "LONOWN - Topic")
+
+        assertEquals("lonown:::worry", u1)
+        assertEquals("lonown:::worry", u2)
+        assertEquals("lonown:::worry", u3)
+        assertEquals("lonown:::worry", u4)
+
+        // Queue deduplication test
+        val searchResults = listOf(
+            SearchResult(videoId = "w1", title = "LONOWN - worry (Slowed)", artist = "S o u n d s .", durationMs = 135000L, thumbnailUrl = ""),
+            SearchResult(videoId = "w2", title = "LONOWN - worry (Slowed + Reverb)", artist = "Night Drive", durationMs = 135000L, thumbnailUrl = ""),
+            SearchResult(videoId = "w3", title = "worry (slowed) - LONOWN", artist = "Anime Chill", durationMs = 135000L, thumbnailUrl = ""),
+            SearchResult(videoId = "aw1", title = "Alan Walker - Faded", artist = "Alan Walker", durationMs = 213000L, thumbnailUrl = ""),
+            SearchResult(videoId = "zhu1", title = "ZHU - Faded", artist = "ZHU", durationMs = 220000L, thumbnailUrl = "")
+        )
+
+        val selectedTrack = searchResults[0] // user clicked LONOWN - worry (Slowed)
+        val selectedKey = TrackNormalizer.extractCanonicalKey(selectedTrack.title, selectedTrack.artist)
+        val remaining = searchResults.filterIndexed { index, _ -> index != 0 }
+
+        val queueUpcoming = TrackNormalizer.deduplicateForQueue(remaining, selectedTrackKey = selectedKey)
+
+        // Duplicate uploads w2 and w3 must be pruned!
+        assertFalse("Duplicate upload w2 should be pruned", queueUpcoming.any { it.videoId == "w2" })
+        assertFalse("Duplicate upload w3 should be pruned", queueUpcoming.any { it.videoId == "w3" })
+
+        // Distinct songs (Alan Walker - Faded and ZHU - Faded) must be kept!
+        assertTrue("Alan Walker - Faded should be kept", queueUpcoming.any { it.videoId == "aw1" })
+        assertTrue("ZHU - Faded should be kept", queueUpcoming.any { it.videoId == "zhu1" })
+    }
+
+    @Test
+    fun testFadedByAlanWalkerVsZhuVsTygaRetainDistinctIdentities() {
+        val k1 = TrackNormalizer.extractCanonicalKey("Alan Walker - Faded", "Alan Walker")
+        val k2 = TrackNormalizer.extractCanonicalKey("ZHU - Faded", "ZHU")
+        val k3 = TrackNormalizer.extractCanonicalKey("Tyga - Faded ft. Lil Wayne", "Tyga")
+
+        assertEquals("alan walker:::faded", k1)
+        assertEquals("zhu:::faded", k2)
+        assertEquals("tyga:::faded", k3)
+
+        assertNotEquals(k1, k2)
+        assertNotEquals(k1, k3)
+        assertNotEquals(k2, k3)
+
+        val candidates = listOf(
+            SearchResult(videoId = "aw1", title = "Alan Walker - Faded", artist = "Alan Walker", durationMs = 213000L, thumbnailUrl = ""),
+            SearchResult(videoId = "zhu1", title = "ZHU - Faded", artist = "ZHU", durationMs = 220000L, thumbnailUrl = ""),
+            SearchResult(videoId = "tyga1", title = "Tyga - Faded ft. Lil Wayne", artist = "Tyga", durationMs = 200000L, thumbnailUrl = "")
+        )
+
+        // None should be purged as duplicate of another
+        val deduplicated = TrackNormalizer.deduplicateAndFilter(candidates)
+        assertEquals(3, deduplicated.size)
+    }
+
+    @Test
+    fun testQueueManagerDeduplicationOnSetQueueAndAddToQueue() {
+        val qm = com.lumione.player.queue.QueueManager()
+        val t1 = Track(videoId = "1", title = "Song 1", artist = "Artist 1")
+        val t2 = Track(videoId = "2", title = "Song 2", artist = "Artist 2")
+        val t1Dup = Track(videoId = "1", title = "Song 1", artist = "Artist 1")
+
+        qm.setQueue(listOf(t1, t2, t1Dup), startIndex = 0)
+        assertEquals(2, qm.queue.value?.size)
+        assertEquals("1", qm.currentTrack()?.videoId)
+
+        // Try adding t2 again
+        qm.addToQueue(t2)
+        assertEquals(2, qm.queue.value?.size)
+
+        // Try insertNext with t2
+        qm.insertNext(t2)
+        assertEquals(2, qm.queue.value?.size)
     }
 }

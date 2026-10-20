@@ -49,6 +49,16 @@ object TrackNormalizer {
         "(?i)\\b(slowed|reverb|sped\\s*up|speed\\s*up|nightcore|daycore|lo-?fi|lo\\s*fi|chill\\s*beats|remix|rework|bootleg|flip|vip|mashup|cover|acoustic|piano\\s*cover|guitar\\s*cover|violin\\s*cover|orchestral?|instrumental(\\s*version)?|karaoke|live(\\s*in|\\s*at|\\s*session)?|bass\\s*boosted|8d(\\s*audio)?|1\\s*hour|10\\s*hours?|loop)\\b"
     )
 
+    private val DERIVATIVE_MODIFIERS_REGEX = Regex(
+        "(?i)\\b(slowed|reverb|sped\\s*up|speed\\s*up|nightcore|daycore|lo-?fi|lo\\s*fi|chill\\s*beats|bass\\s*boosted|8d(\\s*audio)?|1\\s*hour|10\\s*hours?|loop)\\b"
+    )
+
+    fun isDerivativeModifier(title: String): Boolean {
+        return DERIVATIVE_MODIFIERS_REGEX.containsMatchIn(title)
+    }
+
+    private val TITLE_SEPARATOR_REGEX = Regex("\\s+[-—–|:]\\s+")
+
     fun cleanTitle(title: String): String {
         return title
             .replace(BRACKETED_FEAT_REGEX, " ")
@@ -82,32 +92,64 @@ object TrackNormalizer {
         return match?.value?.lowercase(Locale.ROOT)
     }
 
-    fun extractCanonicalKey(title: String, artist: String): String {
-        var rawTitle = title
-        var rawArtist = artist
+    /**
+     * Resolves the real performing artist and song title from raw YouTube metadata.
+     * In third-party uploads, the channel is often a curator (e.g. "S o u n d s ."), NOT the artist.
+     */
+    fun parseArtistAndTitle(rawTitle: String, channelName: String): Pair<String, String> {
+        var detectedArtist = channelName.trim()
+        var detectedTitle = rawTitle.trim()
 
-        if (rawTitle.contains(" - ")) {
-            val parts = rawTitle.split(" - ")
+        if (TITLE_SEPARATOR_REGEX.containsMatchIn(rawTitle)) {
+            val parts = rawTitle.split(TITLE_SEPARATOR_REGEX).map { it.trim() }.filter { it.isNotEmpty() }
             if (parts.size >= 2) {
-                val prefix = parts[0].trim()
-                val suffix = parts.subList(1, parts.size).joinToString(" - ").trim()
-                val genericChannelRegex = Regex("(?i)(channel|remix|lofi|slowed|beats|music|official|records|guy|tv|topic|vevo)")
-                if (prefix.isNotEmpty() && suffix.isNotEmpty()) {
-                    if (rawArtist.isBlank() || genericChannelRegex.containsMatchIn(rawArtist) || cleanArtist(prefix) == cleanArtist(rawArtist)) {
-                        rawArtist = prefix
-                        rawTitle = suffix
-                    }
+                val part0 = parts[0]
+                val part1 = parts.subList(1, parts.size).joinToString(" - ")
+
+                val part0HasModifier = detectModifier(part0) != null
+                val part1HasModifier = detectModifier(part1) != null
+
+                if (part0HasModifier && !part1HasModifier) {
+                    detectedTitle = part0
+                    detectedArtist = part1
+                } else {
+                    detectedArtist = part0
+                    detectedTitle = part1
                 }
             }
+        } else if (channelName.endsWith("- Topic", ignoreCase = true)) {
+            detectedArtist = channelName.replace("- Topic", "", ignoreCase = true).trim()
         }
 
-        val cArtist = cleanArtist(rawArtist)
-        var cCoreTitle = extractCoreTitle(rawTitle)
+        return Pair(detectedArtist, detectedTitle)
+    }
+
+    /**
+     * Unique key identifying the underlying song composition and primary artist.
+     * e.g. "LONOWN - worry (Slowed)" -> "lonown:::worry"
+     * e.g. "Alan Walker - Faded" -> "alanwalker:::faded"
+     * e.g. "ZHU - Faded" -> "zhu:::faded"
+     */
+    fun extractCanonicalKey(title: String, artist: String): String {
+        val (parsedArtist, parsedTitle) = parseArtistAndTitle(title, artist)
+        val cArtist = cleanArtist(parsedArtist)
+        var cCoreTitle = extractCoreTitle(parsedTitle)
         if (cArtist.isNotEmpty() && cCoreTitle.contains(cArtist)) {
             cCoreTitle = cCoreTitle.replace(cArtist, " ").replace(Regex("\\s+"), " ").trim()
         }
-        if (cCoreTitle.isEmpty()) cCoreTitle = cleanTitle(rawTitle)
+        if (cCoreTitle.isEmpty()) cCoreTitle = cleanTitle(parsedTitle)
         return "$cArtist:::$cCoreTitle"
+    }
+
+    /**
+     * Unique key identifying the specific version / recording.
+     * e.g. "LONOWN - worry (Slowed)" -> "lonown:::worry:::slowed"
+     * e.g. "LONOWN - worry" -> "lonown:::worry:::original"
+     */
+    fun extractRecordingKey(title: String, artist: String): String {
+        val canonicalKey = extractCanonicalKey(title, artist)
+        val modifier = detectModifier(title) ?: "original"
+        return "$canonicalKey:::$modifier"
     }
 
     fun deduplicateAndFilter(
@@ -117,26 +159,14 @@ object TrackNormalizer {
         seedKeysToExclude: Set<String> = emptySet()
     ): List<SearchResult> {
         val clusters = mutableMapOf<String, MutableList<SearchResult>>()
-        val excludedCoreTitles = seedKeysToExclude.map {
-            val parts = it.split(":::")
-            if (parts.size >= 2) parts[1] else it
-        }.filter { it.isNotBlank() }.toSet()
 
         for (item in candidates) {
             if (!SearchEngine.isMusicTrack(item.title, item.artist, item.durationMs)) continue
+            if (!allowAlternateVersions && isDerivativeModifier(item.title)) continue
             val canonicalKey = extractCanonicalKey(item.title, item.artist)
-            val coreTitle = extractCoreTitle(item.title)
-            if (seedKeysToExclude.contains(canonicalKey) || (coreTitle.isNotEmpty() && excludedCoreTitles.contains(coreTitle))) continue
-            var targetClusterKey = canonicalKey
-            for ((key, clusterItems) in clusters) {
-                val existingCore = extractCoreTitle(clusterItems.firstOrNull()?.title ?: "")
-                if (existingCore.isNotEmpty() && existingCore == coreTitle && existingCore.length > 2) {
-                    targetClusterKey = key
-                    break
-                }
-            }
+            if (seedKeysToExclude.contains(canonicalKey)) continue
 
-            clusters.getOrPut(targetClusterKey) { mutableListOf() }.add(item)
+            clusters.getOrPut(canonicalKey) { mutableListOf() }.add(item)
         }
 
         val results = mutableListOf<SearchResult>()
@@ -157,7 +187,8 @@ object TrackNormalizer {
             })
 
             val bestTrack = variants.first()
-            val artistKey = cleanArtist(bestTrack.artist)
+            val (parsedArtist, _) = parseArtistAndTitle(bestTrack.title, bestTrack.artist)
+            val artistKey = cleanArtist(parsedArtist)
             val currentCount = artistCountMap[artistKey] ?: 0
             if (currentCount < maxPerArtist) {
                 results.add(bestTrack)
@@ -165,17 +196,65 @@ object TrackNormalizer {
             }
 
             if (allowAlternateVersions && variants.size > 1) {
-                for (i in 1 until minOf(variants.size, 2)) {
-                    val altCount = artistCountMap[artistKey] ?: 0
-                    if (altCount < maxPerArtist) {
-                        results.add(variants[i])
-                        artistCountMap[artistKey] = altCount + 1
+                val seenModifiers = mutableSetOf(detectModifier(bestTrack.title) ?: "original")
+                for (i in 1 until variants.size) {
+                    val variant = variants[i]
+                    val mod = detectModifier(variant.title) ?: "original"
+                    if (!seenModifiers.contains(mod)) {
+                        seenModifiers.add(mod)
+                        val altCount = artistCountMap[artistKey] ?: 0
+                        if (altCount < maxPerArtist) {
+                            results.add(variant)
+                            artistCountMap[artistKey] = altCount + 1
+                        }
                     }
                 }
             }
         }
 
         return results
+    }
+
+    /**
+     * Deduplicates search or discovery results for playback queue insertion.
+     * - Guarantees no duplicate uploads of the selected track appear in upcoming tracks.
+     * - Enforces 1 version per song in the upcoming queue.
+     * - Preserves distinct songs even if they share titles (e.g. Alan Walker - Faded vs ZHU - Faded).
+     * - Prunes duplicate videoIds and identical recordings.
+     */
+    fun deduplicateForQueue(
+        candidates: List<SearchResult>,
+        selectedTrackKey: String = "",
+        maxPerArtist: Int = 3
+    ): List<SearchResult> {
+        val seenVideoIds = mutableSetOf<String>()
+        val seenSongKeys = mutableSetOf<String>()
+        if (selectedTrackKey.isNotBlank()) {
+            seenSongKeys.add(selectedTrackKey)
+        }
+
+        val artistCountMap = mutableMapOf<String, Int>()
+        val filtered = mutableListOf<SearchResult>()
+
+        for (item in candidates) {
+            if (!SearchEngine.isMusicTrack(item.title, item.artist, item.durationMs)) continue
+            if (seenVideoIds.contains(item.videoId)) continue
+
+            val canonicalKey = extractCanonicalKey(item.title, item.artist)
+            if (seenSongKeys.contains(canonicalKey)) continue
+
+            val (parsedArtist, _) = parseArtistAndTitle(item.title, item.artist)
+            val artistKey = cleanArtist(parsedArtist)
+            val count = artistCountMap[artistKey] ?: 0
+            if (count >= maxPerArtist) continue
+
+            seenVideoIds.add(item.videoId)
+            seenSongKeys.add(canonicalKey)
+            artistCountMap[artistKey] = count + 1
+            filtered.add(item)
+        }
+
+        return filtered
     }
 }
 
@@ -392,7 +471,8 @@ class SearchEngine {
             for (i in pool.indices) {
                 val candidate = pool[i]
                 var score = 5.0
-                val cArtist = TrackNormalizer.cleanArtist(candidate.artist)
+                val (parsedArtist, _) = TrackNormalizer.parseArtistAndTitle(candidate.title, candidate.artist)
+                val cArtist = TrackNormalizer.cleanArtist(parsedArtist)
                 val cKey = TrackNormalizer.extractCanonicalKey(candidate.title, candidate.artist).lowercase()
 
                 if (cleanLikedArtists.contains(cArtist) || cleanTopArtists.contains(cArtist)) {

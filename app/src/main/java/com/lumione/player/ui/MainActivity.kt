@@ -2194,9 +2194,19 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private fun buildQueueFromResults(results: List<SearchResult>, startAt: Int): List<Track> {
         if (results.isEmpty()) return emptyList()
         val safeIndex = startAt.coerceIn(0, results.lastIndex)
-        val reordered = results.subList(safeIndex, results.size) +
-                        results.subList(0, safeIndex)
-        return reordered.map { it.toTrack() }
+        val selectedResult = results[safeIndex]
+        val selectedTrack = selectedResult.toTrack()
+
+        // Prune the remaining results for upcoming queue (suppressing duplicate uploads of the selected song)
+        val remainingResults = results.filterIndexed { idx, _ -> idx != safeIndex }
+        val selectedKey = TrackNormalizer.extractCanonicalKey(selectedTrack.title, selectedTrack.artist)
+        val cleanRemaining = TrackNormalizer.deduplicateForQueue(
+            candidates = remainingResults,
+            selectedTrackKey = selectedKey,
+            maxPerArtist = 3
+        )
+
+        return listOf(selectedTrack) + cleanRemaining.map { it.toTrack() }
     }
 
     // ─── PlaybackService.PlaybackServiceListener ──────────────────────────────

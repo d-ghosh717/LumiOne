@@ -92,40 +92,69 @@ function extractCoreTitle(title) {
     return c.replace(/\s+/g, ' ').trim();
 }
 
+const TITLE_SEPARATOR_REGEX = /\s+[-—–|:]\s+/;
+
 /**
- * Extracts a stable canonical key representing the underlying song.
- * Handles "Artist - Song Name" patterns by identifying artist and song title parts.
+ * Resolves the real performing artist and song title from raw YouTube metadata.
+ * In third-party uploads, the channel is often a curator (e.g. "S o u n d s ."), NOT the artist.
  */
-function extractCanonicalKey(title, artist) {
-    let rawTitle = title || '';
-    let rawArtist = artist || '';
+function parseArtistAndTitle(rawTitle, channelName = '') {
+    let detectedArtist = (channelName || '').trim();
+    let detectedTitle = (rawTitle || '').trim();
 
-    // If title is "Artist - Song Title"
-    if (rawTitle.includes(' - ')) {
-        const parts = rawTitle.split(' - ');
+    if (TITLE_SEPARATOR_REGEX.test(rawTitle)) {
+        const parts = rawTitle.split(TITLE_SEPARATOR_REGEX).map(s => s.trim()).filter(Boolean);
         if (parts.length >= 2) {
-            const prefix = parts[0].trim();
-            const suffix = parts.slice(1).join(' - ').trim();
-            const genericChannelRegex = /(channel|remix|lofi|slowed|beats|music|official|records|guy|tv|topic|vevo)/i;
+            const part0 = parts[0];
+            const part1 = parts.slice(1).join(' - ');
 
-            if (prefix.length > 0 && suffix.length > 0) {
-                if (!rawArtist || genericChannelRegex.test(rawArtist) || cleanArtist(prefix) === cleanArtist(rawArtist)) {
-                    rawArtist = prefix;
-                    rawTitle = suffix;
-                }
+            const part0HasModifier = detectModifier(part0) !== null;
+            const part1HasModifier = detectModifier(part1) !== null;
+
+            if (part0HasModifier && !part1HasModifier) {
+                // "Title (Modifier) - Artist"
+                detectedTitle = part0;
+                detectedArtist = part1;
+            } else {
+                // "Artist - Title"
+                detectedArtist = part0;
+                detectedTitle = part1;
             }
         }
+    } else if (channelName.toLowerCase().endsWith('- topic')) {
+        detectedArtist = channelName.replace(/- topic$/i, '').trim();
     }
 
-    let cArtist = cleanArtist(rawArtist);
-    let cCoreTitle = extractCoreTitle(rawTitle);
+    return { artist: detectedArtist, title: detectedTitle };
+}
+
+/**
+ * Extracts a stable canonical key representing the underlying song.
+ * e.g. "LONOWN - worry (Slowed)" -> "lonown:::worry"
+ * e.g. "Alan Walker - Faded" -> "alanwalker:::faded"
+ * e.g. "ZHU - Faded" -> "zhu:::faded"
+ */
+function extractCanonicalKey(title, artist) {
+    const { artist: parsedArtist, title: parsedTitle } = parseArtistAndTitle(title, artist);
+    const cArtist = cleanArtist(parsedArtist);
+    let cCoreTitle = extractCoreTitle(parsedTitle);
 
     if (cArtist && cCoreTitle.includes(cArtist)) {
         cCoreTitle = cCoreTitle.replace(cArtist, ' ').replace(/\s+/g, ' ').trim();
     }
 
-    if (!cCoreTitle) cCoreTitle = cleanTitle(rawTitle);
+    if (!cCoreTitle) cCoreTitle = cleanTitle(parsedTitle);
     return `${cArtist}:::${cCoreTitle}`;
+}
+
+/**
+ * Unique key identifying the specific version / recording.
+ * e.g. "LONOWN - worry (Slowed)" -> "lonown:::worry:::slowed"
+ */
+function extractRecordingKey(title, artist) {
+    const canonicalKey = extractCanonicalKey(title, artist);
+    const modifier = detectModifier(title) || 'original';
+    return `${canonicalKey}:::${modifier}`;
 }
 
 // ─── Deduplication & Alternate-Version Suppression ───────────────────────
@@ -144,14 +173,7 @@ function deduplicateAndPruneVersions(candidates, options = {}) {
     const clusters = new Map(); // clusterKey -> Array<candidate>
     const validCandidates = [];
 
-    const excludedCoreTitles = new Set(
-        Array.from(seedKeysToExclude).map(k => {
-            const parts = k.split(':::');
-            return parts.length >= 2 ? parts[1] : k;
-        })
-    );
-
-    // Step 1: Filter non-music and group by canonicalKey and coreTitle
+    // Step 1: Filter non-music and group by canonicalKey
     for (const track of candidates) {
         const title = track.title || '';
         const artist = track.artist || '';
@@ -160,34 +182,20 @@ function deduplicateAndPruneVersions(candidates, options = {}) {
         if (!isMusicContent(title, artist, durationSec)) continue;
 
         const canonicalKey = extractCanonicalKey(title, artist);
-        const coreTitle = extractCoreTitle(title);
-        if (seedKeysToExclude.has(canonicalKey) || (coreTitle && excludedCoreTitles.has(coreTitle))) continue;
+        if (seedKeysToExclude.has(canonicalKey)) continue;
 
         const modifier = detectModifier(title);
         const enriched = {
             ...track,
             canonicalKey,
-            coreTitle,
             modifier,
             isAlternate: modifier !== null
         };
 
-        // If coreTitle is distinct and non-empty, use canonicalKey as cluster key.
-        // If artist is generic (like LofiGuy/RemixChannel) and coreTitle matches an existing
-        // cluster with verified artist, group it into that cluster.
-        let targetClusterKey = canonicalKey;
-        for (const [key, clusterItems] of clusters.entries()) {
-            const existingCoreTitle = clusterItems[0]?.coreTitle;
-            if (existingCoreTitle && existingCoreTitle === coreTitle && existingCoreTitle.length > 2) {
-                targetClusterKey = key;
-                break;
-            }
+        if (!clusters.has(canonicalKey)) {
+            clusters.set(canonicalKey, []);
         }
-
-        if (!clusters.has(targetClusterKey)) {
-            clusters.set(targetClusterKey, []);
-        }
-        clusters.get(targetClusterKey).push(enriched);
+        clusters.get(canonicalKey).push(enriched);
     }
 
     // Step 2: Select the best representative track for each canonical song cluster
@@ -211,7 +219,8 @@ function deduplicateAndPruneVersions(candidates, options = {}) {
         });
 
         const bestTrack = variants[0];
-        const artistKey = cleanArtist(bestTrack.artist);
+        const { artist: parsedArtist } = parseArtistAndTitle(bestTrack.title, bestTrack.artist);
+        const artistKey = cleanArtist(parsedArtist);
 
         // Artist saturation limit
         const currentCount = artistCountMap.get(artistKey) || 0;
@@ -222,16 +231,59 @@ function deduplicateAndPruneVersions(candidates, options = {}) {
 
         // If user explicitly allowed alternate versions (e.g. remix search), keep up to 1 alternate
         if (allowAlternateVersions && variants.length > 1) {
-            for (let i = 1; i < variants.length && i < 2; i++) {
-                if ((artistCountMap.get(artistKey) || 0) < maxPerArtist) {
-                    validCandidates.push(variants[i]);
-                    artistCountMap.set(artistKey, (artistCountMap.get(artistKey) || 0) + 1);
+            const seenMods = new Set([detectModifier(bestTrack.title) || 'original']);
+            for (let i = 1; i < variants.length; i++) {
+                const variant = variants[i];
+                const mod = detectModifier(variant.title) || 'original';
+                if (!seenMods.has(mod)) {
+                    seenMods.add(mod);
+                    if ((artistCountMap.get(artistKey) || 0) < maxPerArtist) {
+                        validCandidates.push(variant);
+                        artistCountMap.set(artistKey, (artistCountMap.get(artistKey) || 0) + 1);
+                    }
                 }
             }
         }
     }
 
     return validCandidates;
+}
+
+/**
+ * Deduplicates search or discovery results for playback queue insertion.
+ */
+function deduplicateForQueue(candidates, selectedTrackKey = '', maxPerArtist = 3) {
+    const seenVideoIds = new Set();
+    const seenSongKeys = new Set();
+    if (selectedTrackKey) {
+        seenSongKeys.add(selectedTrackKey);
+    }
+
+    const artistCountMap = new Map();
+    const filtered = [];
+
+    for (const item of candidates) {
+        const title = item.title || '';
+        const artist = item.artist || '';
+        const durationSec = Number(item.duration) || 0;
+        if (!isMusicContent(title, artist, durationSec)) continue;
+        if (item.videoId && seenVideoIds.has(item.videoId)) continue;
+
+        const canonicalKey = extractCanonicalKey(title, artist);
+        if (seenSongKeys.has(canonicalKey)) continue;
+
+        const { artist: parsedArtist } = parseArtistAndTitle(title, artist);
+        const artistKey = cleanArtist(parsedArtist);
+        const count = artistCountMap.get(artistKey) || 0;
+        if (count >= maxPerArtist) continue;
+
+        if (item.videoId) seenVideoIds.add(item.videoId);
+        seenSongKeys.add(canonicalKey);
+        artistCountMap.set(artistKey, count + 1);
+        filtered.push(item);
+    }
+
+    return filtered;
 }
 
 // ─── Hybrid Scoring Engine ───────────────────────────────────────────────
@@ -367,9 +419,12 @@ module.exports = {
     cleanTitle,
     cleanArtist,
     extractCoreTitle,
+    parseArtistAndTitle,
     extractCanonicalKey,
+    extractRecordingKey,
     detectModifier,
     deduplicateAndPruneVersions,
+    deduplicateForQueue,
     scoreCandidate,
     rankRecommendations
 };

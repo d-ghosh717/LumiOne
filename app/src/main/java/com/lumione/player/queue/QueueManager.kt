@@ -38,18 +38,57 @@ class QueueManager {
     // ─── Queue Manipulation ───────────────────────────────────────────────────
 
     fun setQueue(tracks: List<Track>, startIndex: Int = 0) {
-        _queue.value = tracks
-        _currentIndex.value = if (tracks.isNotEmpty()) startIndex.coerceIn(0, tracks.lastIndex) else -1
+        if (tracks.isEmpty()) {
+            _queue.value = emptyList()
+            _currentIndex.value = -1
+            history.clear()
+            return
+        }
+        val safeIndex = startIndex.coerceIn(0, tracks.lastIndex)
+        val activeTrack = tracks[safeIndex]
+
+        val seenIds = mutableSetOf<String>()
+        val sanitized = mutableListOf<Track>()
+
+        seenIds.add(activeTrack.videoId)
+
+        // Add unique tracks before safeIndex
+        for (i in 0 until safeIndex) {
+            val t = tracks[i]
+            if (!seenIds.contains(t.videoId)) {
+                seenIds.add(t.videoId)
+                sanitized.add(t)
+            }
+        }
+
+        val newCurrentIndex = sanitized.size
+        sanitized.add(activeTrack)
+
+        // Add unique tracks after safeIndex
+        for (i in (safeIndex + 1) until tracks.size) {
+            val t = tracks[i]
+            if (!seenIds.contains(t.videoId)) {
+                seenIds.add(t.videoId)
+                sanitized.add(t)
+            }
+        }
+
+        _queue.value = sanitized
+        _currentIndex.value = newCurrentIndex
         history.clear()
     }
 
     fun addToQueue(track: Track) {
-        _queue.value = (_queue.value ?: emptyList()) + track
+        val current = _queue.value ?: emptyList()
+        if (current.any { it.videoId == track.videoId }) return
+        _queue.value = current + track
     }
 
     fun insertNext(track: Track) {
         val current = _queue.value?.toMutableList() ?: mutableListOf()
-        val insertAt = (_currentIndex.value ?: -1) + 1
+        val ci = _currentIndex.value ?: -1
+        if (current.getOrNull(ci + 1)?.videoId == track.videoId) return
+        val insertAt = ci + 1
         current.add(insertAt.coerceIn(0, current.size), track)
         _queue.value = current
     }

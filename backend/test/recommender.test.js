@@ -319,6 +319,16 @@ describe('LumiOne Recommender Module Tests', () => {
         assert.equal(result.length, 0);
     });
 
+    test('Seed recording and named rework variants are excluded from its own queue', () => {
+        const fadedKey = extractCanonicalKey('Faded', 'Alan Walker');
+        const queue = rankRecommendations([
+            { id: 'seed-reupload', title: 'Faded', artist: 'Alan Walker', source: 'watch_next' },
+            { id: 'seed-rework', title: 'Faded (Restrung)', artist: 'Alan Walker', source: 'watch_next' },
+            { id: 'related', title: 'The Nights', artist: 'Avicii', source: 'related_artist_search' }
+        ], { seedTitle: 'Faded', seedArtists: ['Alan Walker'], excludeKeys: [fadedKey] }, 10);
+        assert.deepEqual(queue.map(track => track.id), ['related']);
+    });
+
     test('Profiles contain categorical evidence only and no fabricated audio features', () => {
         const profile = buildTrackProfile({ title: 'Faded', artist: 'Alan Walker' });
         assert.equal(profile.primaryGenre, 'electronic_edm');

@@ -182,7 +182,10 @@ function deduplicateAndPruneVersions(candidates, options = {}) {
         if (!isMusicContent(title, artist, durationSec)) continue;
 
         const canonicalKey = extractCanonicalKey(title, artist);
-        if (seedKeysToExclude.has(canonicalKey)) continue;
+        const isExcludedSeedOrVersion = [...seedKeysToExclude].some(seedKey =>
+            canonicalKey === seedKey || (seedKey.slice(seedKey.indexOf(':::') + 3).length >= 4 && canonicalKey.startsWith(`${seedKey} `))
+        );
+        if (isExcludedSeedOrVersion) continue;
 
         const modifier = detectModifier(title);
         const enriched = {

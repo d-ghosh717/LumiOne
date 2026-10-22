@@ -192,7 +192,11 @@ object TrackNormalizer {
             if (!SearchEngine.isMusicTrack(item.title, item.artist, item.durationMs)) continue
             if (!allowAlternateVersions && isDerivativeModifier(item.title)) continue
             val canonicalKey = extractCanonicalKey(item.title, item.artist)
-            if (seedKeysToExclude.contains(canonicalKey)) continue
+            val isExcludedSeedOrVersion = seedKeysToExclude.any { seedKey ->
+                canonicalKey == seedKey ||
+                    (seedKey.substringAfter(":::").length >= 4 && canonicalKey.startsWith("$seedKey "))
+            }
+            if (isExcludedSeedOrVersion) continue
 
             clusters.getOrPut(canonicalKey) { mutableListOf() }.add(item)
         }

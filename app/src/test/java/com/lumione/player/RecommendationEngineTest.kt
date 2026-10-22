@@ -145,6 +145,24 @@ class RecommendationEngineTest {
     }
 
     @Test
+    fun testSeedAndItsNonStandardReworkAreExcludedFromRadioQueue() {
+        val seedKey = TrackNormalizer.extractCanonicalKey("Faded", "Alan Walker")
+        val candidates = listOf(
+            SearchResult(videoId = "seed", title = "Faded", artist = "Alan Walker", durationMs = 213000L, thumbnailUrl = "", source = "watch_next"),
+            SearchResult(videoId = "rework", title = "Faded (Restrung)", artist = "Alan Walker", durationMs = 213000L, thumbnailUrl = "", source = "watch_next"),
+            SearchResult(videoId = "related", title = "The Nights", artist = "Avicii", durationMs = 210000L, thumbnailUrl = "", source = "related_artist_search")
+        )
+        val result = searchEngine.rankRecommendationsLocally(
+            candidates = candidates,
+            seedArtists = listOf("Alan Walker"),
+            seedTitle = "Faded",
+            recentTrackKeys = listOf(seedKey),
+            limit = 10
+        )
+        assertEquals(listOf("The Nights"), result.map { it.title })
+    }
+
+    @Test
     fun testMissingMetadataDoesNotCrashPipeline() {
         val candidatesWithGaps = listOf(
             SearchResult(videoId = "bad1", title = "", artist = "", durationMs = 0L, thumbnailUrl = ""),

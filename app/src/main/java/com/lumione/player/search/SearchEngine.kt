@@ -293,7 +293,9 @@ class SearchEngine {
 
     companion object {
         private const val TAG = "SearchEngine"
-        private const val BACKEND_URL = "https://lumione.onrender.com"
+        private const val DEFAULT_BACKEND_URL = "https://lumione.onrender.com"
+        @Volatile
+        var activeBackendUrl: String = DEFAULT_BACKEND_URL
 
         private val NON_MUSIC_REGEX = Regex(
             "(?i)\\b(gameplay|walkthrough|playthrough|let's play|lets play|gta\\s*[5v]|gta\\s*online|fortnite|roblox|minecraft|free\\s*fire|pubg|call\\s*of\\s*duty|cod|valorant|apex\\s*legends|speedrun|cutscenes?|game\\s*trailer|asmr|mukbang|slime|satisfying|unboxing|prank|comedy video|funny video|funny\\s*moments|puzzle|riddle|challenge|diy|crafts|life\\s*hacks|vlog|daily vlog|reaction to|reacting|roast|news live|live stream|livestream|full movie|full episode|episode \\d+|season \\d+|tier list|audiobook|podcast|interview|shorts|meme|compilation|sfx|sound effects?|10 hour|1 hour loop|24/7|karaoke backing track)\\b"
@@ -328,7 +330,7 @@ class SearchEngine {
         // 1. Try Authenticated Backend Search First
         try {
             val encodedQuery = URLEncoder.encode(trimmed, "UTF-8")
-            val url = "$BACKEND_URL/api/search?q=$encodedQuery"
+            val url = "$activeBackendUrl/api/search?q=$encodedQuery"
             val response = getJsonAuthenticated(url, idToken, timeoutMs = 15000)
             val backendResults = parseBackendResults(response).filter { isMusicTrack(it.title, it.artist, it.durationMs) }
             val cleanResults = TrackNormalizer.deduplicateAndFilter(
@@ -375,7 +377,7 @@ class SearchEngine {
     suspend fun getTrending(idToken: String?): List<SearchResult> = withContext(Dispatchers.IO) {
         if (!idToken.isNullOrBlank()) {
             try {
-                val url = "$BACKEND_URL/api/trending"
+                val url = "$activeBackendUrl/api/trending"
                 val response = getJsonAuthenticated(url, idToken, timeoutMs = 15000)
                 val results = parseBackendResults(response).filter { isMusicTrack(it.title, it.artist, it.durationMs) }
                 val clean = TrackNormalizer.deduplicateAndFilter(results, allowAlternateVersions = false)
@@ -426,7 +428,7 @@ class SearchEngine {
                 put("limit", limit)
             }
 
-            val url = "$BACKEND_URL/api/recommendations"
+            val url = "$activeBackendUrl/api/recommendations"
             val response = postJson(url, payload.toString(), idToken, timeoutMs = 15000)
             val backendResults = parseBackendResults(response)
             if (backendResults.isNotEmpty()) {
@@ -479,20 +481,40 @@ class SearchEngine {
         val effectiveTitle = parsedTitle.ifBlank { seedTrack.title }
         val seedKey = TrackNormalizer.extractCanonicalKey(effectiveTitle, effectiveArtist)
 
+        val combinedSeedArtists = (listOf(effectiveArtist) + seedArtists).filter { it.isNotBlank() }.distinct()
+        val combinedRecentKeys = (listOf(seedKey) + recentTrackKeys).distinct()
+
         // 1. Try Backend Up Next Service (/api/recommendations/related)
         try {
             val encodedTitle = URLEncoder.encode(effectiveTitle, "UTF-8")
             val encodedArtist = URLEncoder.encode(effectiveArtist, "UTF-8")
             val encodedVideoId = URLEncoder.encode(seedTrack.videoId, "UTF-8")
-            val url = "$BACKEND_URL/api/recommendations/related?title=$encodedTitle&artist=$encodedArtist&videoId=$encodedVideoId&limit=$limit"
+            val url = "$activeBackendUrl/api/recommendations/related?title=$encodedTitle&artist=$encodedArtist&videoId=$encodedVideoId&limit=$limit"
+            Log.d(TAG, "[SearchEngine:Related] Requesting backend recommendations from $url for seed='$effectiveTitle' by '$effectiveArtist' (id='${seedTrack.videoId}')")
             val response = getJsonAuthenticated(url, idToken, timeoutMs = 12000)
             val backendResults = parseBackendResults(response)
+            Log.d(TAG, "[SearchEngine:Related] Backend returned ${backendResults.size} raw candidates for seed '$effectiveTitle'")
             if (backendResults.isNotEmpty()) {
-                Log.i(TAG, "Loaded ${backendResults.size} related tracks from backend for '$effectiveTitle' by '$effectiveArtist'")
-                return@withContext backendResults
+                val rankedBackend = rankRecommendationsLocally(
+                    candidates = backendResults,
+                    seedArtists = combinedSeedArtists,
+                    seedTitle = effectiveTitle,
+                    likedArtists = likedArtists,
+                    topPlayedArtists = topPlayedArtists,
+                    likedTrackKeys = likedTrackKeys,
+                    recentTrackKeys = combinedRecentKeys,
+                    skippedArtists = skippedArtists,
+                    limit = limit
+                )
+                if (rankedBackend.isNotEmpty()) {
+                    Log.i(TAG, "[SearchEngine:Related] Loaded ${rankedBackend.size} verified related tracks from backend for '$effectiveTitle' by '$effectiveArtist' (First 5: ${rankedBackend.take(5).map { it.title }})")
+                    return@withContext rankedBackend
+                } else {
+                    Log.w(TAG, "[SearchEngine:Related] Backend returned ${backendResults.size} candidates, but all were rejected by client eligibility gate for seed '$effectiveTitle' by '$effectiveArtist'. Falling back to native candidates.")
+                }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Backend related tracks call failed: ${e.message}. Using native offline candidate engine.")
+            Log.w(TAG, "[SearchEngine:Related] Backend related tracks call failed: ${e.message}. Using native offline candidate engine.")
         }
 
         // 2. Local Fallback Candidate Retrieval & Ranking
@@ -524,9 +546,6 @@ class SearchEngine {
         } catch (_: Exception) {}
 
         // Note: Generic trending music charts are intentionally excluded from seed-specific radio queues.
-
-        val combinedSeedArtists = (listOf(effectiveArtist) + seedArtists).filter { it.isNotBlank() }.distinct()
-        val combinedRecentKeys = (listOf(seedKey) + recentTrackKeys).distinct()
 
         return@withContext rankRecommendationsLocally(
             candidates = candidatePool,

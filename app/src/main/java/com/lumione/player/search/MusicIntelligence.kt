@@ -216,9 +216,14 @@ object MusicIntelligence {
         "hansraj raghuwanshi" to ArtistMetadata(GenreFamilies.DEVOTIONAL_SPIRITUAL, listOf("shiv_bhajan", "devotional"), 0.55, 0.55, 0.45, 0.65, listOf("devotional")),
         "anup jalota" to ArtistMetadata(GenreFamilies.DEVOTIONAL_SPIRITUAL, listOf("bhajan"), 0.35, 0.60, 0.30, 0.85, listOf("devotional", "serene")),
         "anuradha paudwal" to ArtistMetadata(GenreFamilies.DEVOTIONAL_SPIRITUAL, listOf("aarti", "bhajan"), 0.40, 0.60, 0.35, 0.80, listOf("devotional")),
+        "sadhu tiwari" to ArtistMetadata(GenreFamilies.DEVOTIONAL_SPIRITUAL, listOf("devotional", "bhajan"), 0.40, 0.50, 0.35, 0.75, listOf("devotional")),
 
         // Indian Regional / Haryanvi / Bhojpuri / Desi
         "mc square" to ArtistMetadata(GenreFamilies.INDIAN_REGIONAL_DESI, listOf("haryanvi_hiphop", "desi_hiphop"), 0.82, 0.70, 0.80, 0.15, listOf("energetic")),
+        "dhanda nyoliwala" to ArtistMetadata(GenreFamilies.INDIAN_REGIONAL_DESI, listOf("haryanvi_hiphop", "desi_hiphop"), 0.85, 0.70, 0.82, 0.15, listOf("energetic")),
+        "yo yo honey singh" to ArtistMetadata(GenreFamilies.INDIAN_REGIONAL_DESI, listOf("desi_hiphop", "punjabi_pop"), 0.85, 0.75, 0.85, 0.12, listOf("energetic", "party")),
+        "kr\$na" to ArtistMetadata(GenreFamilies.INDIAN_REGIONAL_DESI, listOf("desi_hiphop"), 0.82, 0.50, 0.78, 0.15, listOf("energetic", "dark")),
+        "krsna" to ArtistMetadata(GenreFamilies.INDIAN_REGIONAL_DESI, listOf("desi_hiphop"), 0.82, 0.50, 0.78, 0.15, listOf("energetic", "dark")),
         "khesari lal yadav" to ArtistMetadata(GenreFamilies.INDIAN_REGIONAL_DESI, listOf("bhojpuri"), 0.85, 0.80, 0.85, 0.15, listOf("energetic")),
         "pawan singh" to ArtistMetadata(GenreFamilies.INDIAN_REGIONAL_DESI, listOf("bhojpuri"), 0.82, 0.78, 0.82, 0.18, listOf("energetic")),
 
@@ -271,7 +276,7 @@ object MusicIntelligence {
         )
     }
 
-    private val TITLE_DEVOTIONAL_REGEX = Regex("(?i)\\b(chalisa|bhajan|aarti|stotra|mantra|satsang|kirtan|shiva|hanuman|krishna|ramayan|durga|ganesh|gayatri|dhun|amritwani)\\b")
+    private val TITLE_DEVOTIONAL_REGEX = Regex("(?i)\\b(chalisa|bhajan|aarti|stotra|mantra|satsang|kirtan|shiva|hanuman|krishna|ramayan|durga|ganesh|gayatri|dhun|amritwani|parvati|mahadev|ram|shyam)\\b")
     private val TITLE_CHILL_REGEX = Regex("(?i)\\b(lo-?fi|chill\\s*beats|ambient|meditation|sleep\\s*music|calm\\s*piano|study\\s*beats|relaxing\\s*piano)\\b")
     private val TITLE_EDM_REGEX = Regex("(?i)\\b(edm|club\\s*mix|extended\\s*mix|future\\s*bass|dubstep|techno|trance|house\\s*music|progressive\\s*house|festival\\s*mix|synthwave)\\b")
     private val TITLE_REGIONAL_REGEX = Regex("(?i)\\b(bhojpuri|haryanvi|ragni|tupka|casa|chora)\\b")

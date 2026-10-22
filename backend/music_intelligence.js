@@ -285,6 +285,13 @@ const ARTIST_GENRE_MAP = {
         mood: ['devotional', 'serene'],
         relatedArtists: ['hariharan', 'anuradha paudwal', 'jagjit singh']
     },
+    'sadhu tiwari': {
+        family: GENRE_FAMILIES.DEVOTIONAL_SPIRITUAL,
+        subgenres: ['devotional', 'bhajan'],
+        energy: 0.40, valence: 0.50, danceability: 0.35, acousticness: 0.75,
+        mood: ['devotional'],
+        relatedArtists: ['hansraj raghuwanshi', 'gulshan kumar']
+    },
     'anuradha paudwal': {
         family: GENRE_FAMILIES.DEVOTIONAL_SPIRITUAL,
         subgenres: ['aarti', 'bhajan'],
@@ -314,6 +321,34 @@ const ARTIST_GENRE_MAP = {
         energy: 0.82, valence: 0.70, danceability: 0.80, acousticness: 0.15,
         mood: ['energetic'],
         relatedArtists: ['diler kharkiya', 'renuka panwar', 'fazilpuria']
+    },
+    'dhanda nyoliwala': {
+        family: GENRE_FAMILIES.INDIAN_REGIONAL_DESI,
+        subgenres: ['haryanvi_hiphop', 'desi_hiphop'],
+        energy: 0.85, valence: 0.70, danceability: 0.82, acousticness: 0.15,
+        mood: ['energetic'],
+        relatedArtists: ['mc square', 'diler kharkiya']
+    },
+    'yo yo honey singh': {
+        family: GENRE_FAMILIES.INDIAN_REGIONAL_DESI,
+        subgenres: ['desi_hiphop', 'punjabi_pop'],
+        energy: 0.85, valence: 0.75, danceability: 0.85, acousticness: 0.12,
+        mood: ['energetic', 'party'],
+        relatedArtists: ['badshah', 'guru randhawa', 'raftaar']
+    },
+    'kr$na': {
+        family: GENRE_FAMILIES.INDIAN_REGIONAL_DESI,
+        subgenres: ['desi_hiphop'],
+        energy: 0.82, valence: 0.50, danceability: 0.78, acousticness: 0.15,
+        mood: ['energetic', 'dark'],
+        relatedArtists: ['raftaar', 'seedhe maut']
+    },
+    'krsna': {
+        family: GENRE_FAMILIES.INDIAN_REGIONAL_DESI,
+        subgenres: ['desi_hiphop'],
+        energy: 0.82, valence: 0.50, danceability: 0.78, acousticness: 0.15,
+        mood: ['energetic', 'dark'],
+        relatedArtists: ['raftaar', 'seedhe maut']
     },
     'khesari lal yadav': {
         family: GENRE_FAMILIES.INDIAN_REGIONAL_DESI,
@@ -518,7 +553,7 @@ const ARTIST_GENRE_MAP = {
 const TITLE_GENRE_CUES = [
     {
         family: GENRE_FAMILIES.DEVOTIONAL_SPIRITUAL,
-        regex: /\b(chalisa|bhajan|aarti|stotra|stotram|mantra|satsang|kirtan|shiva|shiv|hanuman|krishna|ramayan|durga|ganesh|gayatri|dhun|amritwani|jaap|prarthana|bhakti|sankirtan|devotional|divine|temple|shlok|shloka|gurbani|shabad|qawwali|gospel|hymn|worship|chant)\b/i,
+        regex: /\b(chalisa|bhajan|aarti|stotra|stotram|mantra|satsang|kirtan|shiva|shiv|hanuman|krishna|ramayan|durga|ganesh|gayatri|dhun|amritwani|jaap|prarthana|bhakti|sankirtan|devotional|divine|temple|shlok|shloka|gurbani|shabad|qawwali|gospel|hymn|worship|chant|parvati|mahadev|ram|shyam)\b/i,
         subgenres: ['devotional', 'bhajan'],
         energy: 0.40,
         valence: 0.60,

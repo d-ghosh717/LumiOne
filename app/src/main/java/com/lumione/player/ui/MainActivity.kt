@@ -2170,15 +2170,28 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     private var currentRadioSeedId: String = ""
     private var radioJob: Job? = null
+    private var radioSessionToken: Long = 0L
 
     private fun playSingleSongWithRadio(track: Track) {
-        setQueueAndPlay(listOf(track), 0, track, QueueMode.RADIO)
+        val qm = playbackService?.queueManager ?: queueManager
+        val manualTracks = if (qm.queueMode == QueueMode.RADIO) {
+            qm.queue.value?.filter { it.isManual } ?: emptyList()
+        } else {
+            emptyList()
+        }
+        val initialQueue = listOf(track) + manualTracks
+        setQueueAndPlay(initialQueue, 0, track, QueueMode.RADIO)
         fetchAndPopulateRelatedQueue(track)
     }
 
     private fun fetchAndPopulateRelatedQueue(seedTrack: Track) {
         radioJob?.cancel()
+        val sessionToken = ++radioSessionToken
         currentRadioSeedId = seedTrack.videoId
+        val targetQm = playbackService?.queueManager ?: queueManager
+        val activeQueueMode = targetQm.queueMode
+        Log.i(TAG, "[RadioLifecycle] Starting radio session #$sessionToken for seedId='${seedTrack.videoId}', title='${seedTrack.title}', artist='${seedTrack.artist}', mode=$activeQueueMode")
+
         radioJob = mainScope.launch {
             try {
                 val likedTracks = favoritesManager.getFavorites()
@@ -2203,14 +2216,35 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                     limit = 15
                 )
 
+                // Ensure this response is still for the active session
+                if (sessionToken != radioSessionToken || currentRadioSeedId != seedTrack.videoId) {
+                    Log.i(TAG, "[RadioLifecycle] Discarding stale in-flight response for seed '${seedTrack.title}' (session $sessionToken != active $radioSessionToken)")
+                    return@launch
+                }
+
                 val activeTrack = playbackService?.queueManager?.currentTrack() ?: queueManager.currentTrack()
-                if (currentRadioSeedId == seedTrack.videoId && (activeTrack == null || activeTrack.videoId == seedTrack.videoId)) {
-                    val upcoming = relatedResults.map { it.toTrack() }
-                    queueManager.appendUpcomingTracks(upcoming)
-                    playbackService?.queueManager?.appendUpcomingTracks(upcoming)
+                if (activeTrack != null && activeTrack.videoId != seedTrack.videoId) {
+                    Log.i(TAG, "[RadioLifecycle] Discarding response: active track '${activeTrack.title}' (${activeTrack.videoId}) changed from seed '${seedTrack.title}' (${seedTrack.videoId})")
+                    return@launch
+                }
+
+                val currentQm = playbackService?.queueManager ?: queueManager
+                val queueBefore = currentQm.queue.value ?: emptyList()
+                Log.d(TAG, "[RadioLifecycle] Queue before refresh (count=${queueBefore.size}): ${queueBefore.map { it.videoId }}")
+
+                val upcoming = relatedResults.map { it.toTrack() }
+                queueManager.replaceGeneratedUpcomingTracks(upcoming)
+                playbackService?.queueManager?.replaceGeneratedUpcomingTracks(upcoming)
+
+                val queueAfter = (playbackService?.queueManager ?: queueManager).queue.value ?: emptyList()
+                Log.i(TAG, "[RadioLifecycle] Queue after refresh (count=${queueAfter.size}): ${queueAfter.map { it.videoId }}")
+                Log.i(TAG, "[RadioLifecycle] First 5 upcoming after refresh: ${queueAfter.drop(1).take(5).map { "${it.title} by ${it.artist} (${it.videoId})" }}")
+
+                runOnUiThread {
+                    refreshQueueSheet()
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to load Up Next related tracks for '${seedTrack.title}': ${e.message}")
+                Log.w(TAG, "[RadioLifecycle] Failed to load Up Next related tracks for '${seedTrack.title}': ${e.message}")
             }
         }
     }
@@ -2258,6 +2292,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                     if (newTracks.isNotEmpty()) {
                         queueManager.appendUpcomingTracks(newTracks)
                         playbackService?.queueManager?.appendUpcomingTracks(newTracks)
+                        runOnUiThread {
+                            refreshQueueSheet()
+                        }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Autoplay replenishment failed: ${e.message}")
@@ -2337,6 +2374,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 updateLikeButtonState(track)
                 if (currentNavTab == 2) refreshLibraryTab()
 
+                refreshQueueSheet()
                 checkAutoplayReplenishment(track)
             }
         }

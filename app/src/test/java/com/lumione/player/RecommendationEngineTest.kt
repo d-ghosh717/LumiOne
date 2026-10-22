@@ -586,4 +586,131 @@ class RecommendationEngineTest {
         assertFalse("Shared eligibility gate must reject devotional for EDM", eligible)
         assertNotNull(reason)
     }
+
+    @Test
+    fun testP0RegressionQueueLifecycleFromOnTheFloorToFaded() {
+        val qm = com.lumione.player.queue.QueueManager()
+        var radioSessionToken: Long = 0L
+        var currentRadioSeedId: String = ""
+
+        // 1. User starts Jennifer Lopez — On the Floor
+        val seed1 = Track(videoId = "jlo_on_the_floor", title = "On the Floor", artist = "Jennifer Lopez")
+        currentRadioSeedId = seed1.videoId
+        val session1 = ++radioSessionToken
+
+        qm.setQueue(listOf(seed1), 0, com.lumione.player.queue.QueueMode.RADIO)
+        assertEquals(seed1.videoId, qm.currentTrack()?.videoId)
+
+        // Seed 1 recommendations (Dance Pop / Latin Pop)
+        val seed1Recommendations = listOf(
+            Track(videoId = "pitbull_give_me_everything", title = "Give Me Everything", artist = "Pitbull"),
+            Track(videoId = "shakira_waka_waka", title = "Waka Waka", artist = "Shakira"),
+            Track(videoId = "rihanna_only_girl", title = "Only Girl (In the World)", artist = "Rihanna")
+        )
+        // Population replaces generated upcoming
+        qm.replaceGeneratedUpcomingTracks(seed1Recommendations)
+        val queueSeed1 = qm.queue.value ?: emptyList()
+        assertEquals(4, queueSeed1.size)
+        assertEquals("jlo_on_the_floor", queueSeed1[0].videoId)
+        assertTrue(queueSeed1.any { it.videoId == "pitbull_give_me_everything" })
+
+        // 2. User manually adds a song to queue ("Play Next")
+        val manualTrack = Track(videoId = "user_manual_song", title = "My Manual Jam", artist = "Favorite Artist", isManual = true)
+        qm.insertNext(manualTrack)
+        val queueWithManual = qm.queue.value ?: emptyList()
+        assertEquals("user_manual_song", queueWithManual[1].videoId)
+        assertTrue(queueWithManual[1].isManual)
+
+        // 3. User now starts Alan Walker — Faded
+        val seed2 = Track(videoId = "alan_walker_faded", title = "Faded", artist = "Alan Walker")
+        val manualTracks = qm.queue.value?.filter { it.isManual } ?: emptyList()
+        val initialQueueSeed2 = listOf(seed2) + manualTracks
+        qm.setQueue(initialQueueSeed2, 0, com.lumione.player.queue.QueueMode.RADIO)
+
+        val session2 = ++radioSessionToken
+        currentRadioSeedId = seed2.videoId
+
+        // Verify request uses Faded's identity
+        assertEquals("alan_walker_faded", seed2.videoId)
+        assertEquals("Faded", seed2.title)
+        assertEquals("Alan Walker", seed2.artist)
+
+        // Verify currently playing track is Faded
+        assertEquals("alan_walker_faded", qm.currentTrack()?.videoId)
+
+        // Verify manual track is protected and preserved right after Faded
+        val currentQueueBeforeRecs = qm.queue.value ?: emptyList()
+        assertEquals("user_manual_song", currentQueueBeforeRecs[1].videoId)
+
+        // 4. Stale delayed in-flight response arrives from Seed 1
+        val staleDelayedResponseFromSeed1 = seed1Recommendations
+        val callerSession = session1
+        val callerSeedId = seed1.videoId
+        if (callerSession == radioSessionToken && callerSeedId == currentRadioSeedId) {
+            qm.replaceGeneratedUpcomingTracks(staleDelayedResponseFromSeed1)
+        }
+        // Assert old delayed response cannot overwrite new queue
+        assertFalse("Delayed response from seed 1 must be ignored", qm.queue.value?.any { it.videoId == "pitbull_give_me_everything" } == true)
+
+        // 5. Simulate client-side rejection of stale Render backend returning Indian chart/devotional tracks for Faded
+        val badBackendTracksForFaded = listOf(
+            SearchResult(videoId = "47_T2N3p", title = "Casa Tupka Anthemo", artist = "Yo Yo Honey Singh", durationMs = 183000L, thumbnailUrl = ""),
+            SearchResult(videoId = "x8gA2kXk", title = "Boom Shaka", artist = "Dhanda Nyoliwala, KR\$NA", durationMs = 218000L, thumbnailUrl = ""),
+            SearchResult(videoId = "gh3Xg3e1", title = "Hanuman Chalisa", artist = "Anup Jalota", durationMs = 532000L, thumbnailUrl = ""),
+            SearchResult(videoId = "-D8jkD4j", title = "Parvati", artist = "Sadhu Tiwari", durationMs = 284000L, thumbnailUrl = "")
+        )
+        val rankedBadBackend = searchEngine.rankRecommendationsLocally(
+            candidates = badBackendTracksForFaded,
+            seedArtists = listOf(seed2.artist),
+            seedTitle = seed2.title
+        )
+        // All bad backend tracks MUST be rejected by eligibility gate
+        assertTrue("Devotional and irrelevant chart tracks must fail client eligibility gate for EDM seed", rankedBadBackend.isEmpty())
+
+        // 6. Valid EDM recommendations for Seed 2 arrive
+        val seed2Recommendations = listOf(
+            Track(videoId = "alan_walker_alone", title = "Alone", artist = "Alan Walker"),
+            Track(videoId = "chainsmokers_closer", title = "Closer", artist = "The Chainsmokers"),
+            Track(videoId = "avicii_levels", title = "Levels", artist = "Avicii")
+        )
+        if (session2 == radioSessionToken && seed2.videoId == currentRadioSeedId) {
+            qm.replaceGeneratedUpcomingTracks(seed2Recommendations)
+        }
+
+        val finalQueue = qm.queue.value ?: emptyList()
+
+        // Assert Seed 2's queue does NOT retain Seed 1's recommendations
+        assertFalse("Previous Seed 1 recommendations must not be retained", finalQueue.any { it.videoId == "pitbull_give_me_everything" })
+        assertFalse("Previous Seed 1 recommendations must not be retained", finalQueue.any { it.videoId == "shakira_waka_waka" })
+        assertFalse("Previous Seed 1 recommendations must not be retained", finalQueue.any { it.videoId == "rihanna_only_girl" })
+
+        // Assert Seed 2's queue has Seed 2's valid recommendations
+        assertTrue("Queue must contain Alone by Alan Walker", finalQueue.any { it.videoId == "alan_walker_alone" })
+        assertTrue("Queue must contain Closer by The Chainsmokers", finalQueue.any { it.videoId == "chainsmokers_closer" })
+        assertTrue("Queue must contain Levels by Avicii", finalQueue.any { it.videoId == "avicii_levels" })
+
+        // Assert manual track is preserved
+        assertEquals("user_manual_song", finalQueue[1].videoId)
+        assertTrue(finalQueue[1].isManual)
+
+        // Assert playing track is Faded
+        assertEquals("alan_walker_faded", finalQueue[0].videoId)
+    }
+
+    @Test
+    fun testExplicitPlaylistModeIsNotRegeneratedAsRadio() {
+        val qm = com.lumione.player.queue.QueueManager()
+        val playlistTracks = listOf(
+            Track(videoId = "pl_1", title = "Song 1", artist = "Artist 1"),
+            Track(videoId = "pl_2", title = "Song 2", artist = "Artist 2"),
+            Track(videoId = "pl_3", title = "Song 3", artist = "Artist 3")
+        )
+        qm.setQueue(playlistTracks, 0, com.lumione.player.queue.QueueMode.PLAYLIST_OR_FAVORITES)
+
+        assertEquals(com.lumione.player.queue.QueueMode.PLAYLIST_OR_FAVORITES, qm.queueMode)
+        assertFalse("Playlist mode must not be Radio", qm.queueMode == com.lumione.player.queue.QueueMode.RADIO)
+        assertEquals(3, qm.queue.value?.size)
+        assertEquals("pl_1", qm.currentTrack()?.videoId)
+        assertEquals("pl_2", qm.peekNext()?.videoId)
+    }
 }

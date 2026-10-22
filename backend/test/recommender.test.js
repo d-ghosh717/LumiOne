@@ -13,7 +13,6 @@ const {
     rankRecommendations,
     buildTrackProfile,
     checkEligibilityGate,
-    computeAcousticSimilarity,
     scoreTrackProfile,
     GENRE_FAMILIES
 } = require('../recommender');
@@ -34,6 +33,7 @@ describe('LumiOne Recommender Module Tests', () => {
         // Vlogs & Podcasts
         assert.equal(isMusicContent('Daily Vlog Day in NYC', 'Vlogger', 600), false);
         assert.equal(isMusicContent('Joe Rogan Podcast Clip Interview', 'ClipZone', 400), false);
+        assert.equal(isMusicContent("The Making Of 'On The Floor' (Vevo Footnotes)", 'Jennifer Lopez', 240), false);
 
         // Duration limits
         assert.equal(isMusicContent('Short meme clip', 'Creator', 15), false);
@@ -291,21 +291,45 @@ describe('LumiOne Recommender Module Tests', () => {
         assert.equal(key, 'alan walker:::faded');
     });
 
-    test('Embeat-inspired 7-dim acoustic vector calculation and cosine similarity', () => {
-        const p1 = buildTrackProfile({ title: 'Faded', artist: 'Alan Walker' });
-        const p2 = buildTrackProfile({ title: 'Alone', artist: 'Alan Walker' });
-        const pDevotional = buildTrackProfile({ title: 'Hanuman Chalisa', artist: 'Hariharan' });
+    test('Captured Faded and Judas provider pools rank differently from their runtime seed identity', () => {
+        const fixture = require('./fixtures/staging_candidates_2026-10-22.json');
+        const faded = rankRecommendations(fixture.faded, { seedTitle: 'Faded', seedArtists: ['Alan Walker'], excludeKeys: ['alan walker:::faded'] }, 10);
+        const judas = rankRecommendations(fixture.judas, { seedTitle: 'Judas', seedArtists: ['Lady Gaga'], excludeKeys: ['lady gaga:::judas'] }, 10);
+        assert.ok(faded.length > 0);
+        assert.ok(judas.length > 0);
+        assert.notDeepEqual(faded.map(item => item.id), judas.map(item => item.id));
+        assert.ok(faded.some(item => item.artist === 'Avicii' || item.artist === 'The Chainsmokers'));
+        assert.ok(judas.every(item => item.artist.includes('Lady Gaga')));
+    });
 
-        assert.equal(p1.acousticVector.length, 7);
-        assert.equal(p2.acousticVector.length, 7);
+    test('Duplicate recordings merge provider evidence before scoring', () => {
+        const candidates = [
+            { id: 'watch-id', youtubeVideoId: 'watch-id', title: 'The Nights', artist: 'Avicii', provider: 'lumione', source: 'watch_next', retrievalSources: ['watch_next'], duration: 220 },
+            { id: 'search-id', youtubeVideoId: 'search-id', title: 'Avicii - The Nights (Official Audio)', artist: 'Avicii', provider: 'lumione', source: 'related_artist_search', retrievalSources: ['related_artist_search'], duration: 220 }
+        ];
+        const unique = deduplicateAndPruneVersions(candidates, { maxPerArtist: 5 });
+        assert.equal(unique.length, 1);
+        assert.deepEqual(new Set(unique[0].retrievalSources), new Set(['watch_next', 'related_artist_search']));
+    });
 
-        // Acoustic similarity between two Alan Walker melodic electronic tracks should be high (> 0.85)
-        const simEdm = computeAcousticSimilarity(p1.acousticVector, p2.acousticVector);
-        assert.ok(simEdm > 0.85, `Expected EDM acoustic similarity > 0.85, got ${simEdm}`);
+    test('Generic chart candidates cannot create a radio queue without seed evidence', () => {
+        const result = rankRecommendations([
+            { id: 'chart-1', title: 'Random Pop Track', artist: 'Unknown Singer', provider: 'saavn', source: 'generic_chart', duration: 200 }
+        ], { seedTitle: 'Faded', seedArtists: ['Alan Walker'] }, 10);
+        assert.equal(result.length, 0);
+    });
 
-        // Acoustic similarity between EDM and acoustic devotional should be significantly lower
-        const simDev = computeAcousticSimilarity(p1.acousticVector, pDevotional.acousticVector);
-        assert.ok(simDev < simEdm, `Expected devotional similarity (${simDev}) < EDM similarity (${simEdm})`);
+    test('Profiles contain categorical evidence only and no fabricated audio features', () => {
+        const profile = buildTrackProfile({ title: 'Faded', artist: 'Alan Walker' });
+        assert.equal(profile.primaryGenre, 'electronic_edm');
+        assert.equal(profile.provenance, 'artist_taxonomy:alan walker');
+        for (const key of ['energy', 'tempo', 'valence', 'danceability', 'acousticness', 'acousticVector', 'popularity']) {
+            assert.equal(Object.hasOwn(profile, key), false, `${key} must not be fabricated`);
+        }
+        const unknown = buildTrackProfile({ title: 'Unknown title', artist: 'Unknown channel' });
+        assert.equal(unknown.primaryGenre, null);
+        assert.equal(unknown.confidence, 0);
+        assert.deepEqual(unknown.moodTags, []);
     });
 
     test('Strict genre eligibility gate rejects devotional and regional desi tracks for EDM seed', () => {
@@ -351,23 +375,16 @@ describe('LumiOne Recommender Module Tests', () => {
         assert.ok(titles.includes('Someone Like You') || titles.includes('Channa Mereya') || titles.includes('Dusk Till Dawn (feat. Sia)'));
     });
 
-    test('ScoreTrackProfile produces transparent 0-100 breakdown with all components', () => {
+    test('Point score is transparent, bounded, and increases with stronger retrieval evidence', () => {
         const seedProfile = buildTrackProfile({ title: 'Faded', artist: 'Alan Walker' });
-        const candidate = { id: 'aw1', title: 'Alone', artist: 'Alan Walker', duration: 164, source: 'seed_artist' };
-
-        const userProfile = {
-            seedProfile,
-            seedArtists: ['Alan Walker']
-        };
-
-        const result = scoreTrackProfile(candidate, seedProfile, userProfile, []);
-        assert.ok(result.totalScore >= 0 && result.totalScore <= 100);
-        assert.ok(result.breakdown);
-        assert.ok(result.breakdown.acousticSimilarity >= 0 && result.breakdown.acousticSimilarity <= 40);
-        assert.ok(result.breakdown.genreCompatibility >= 0 && result.breakdown.genreCompatibility <= 25);
-        assert.ok(result.breakdown.moodEnergyCompatibility >= 0 && result.breakdown.moodEnergyCompatibility <= 20);
-        assert.ok(result.breakdown.artistAndPreference >= 0 && result.breakdown.artistAndPreference <= 15);
-        assert.ok(result.primaryExplanation.length > 0);
+        const base = { id: 'aw1', title: 'Alone', artist: 'Alan Walker', duration: 164, source: 'same_artist_catalog' };
+        const strong = { ...base, source: 'watch_next', retrievalSources: ['watch_next', 'same_artist_catalog'] };
+        const weakScore = scoreTrackProfile(base, seedProfile, { seedArtists: ['Alan Walker'] }, []);
+        const strongScore = scoreTrackProfile(strong, seedProfile, { seedArtists: ['Alan Walker'] }, []);
+        assert.ok(strongScore.totalScore > weakScore.totalScore);
+        assert.deepEqual(Object.keys(strongScore.breakdown), ['relatedEvidence', 'genreCompatibility', 'moodStyleCompatibility', 'artistRelationship', 'contextualSimilarity', 'penalties']);
+        assert.ok(strongScore.totalScore >= 0 && strongScore.totalScore <= 100);
+        assert.equal(strongScore.breakdown.relatedEvidence, 30);
     });
 
     test('Devotional seed: compatible devotional candidates; strictly rejects unrelated EDM', () => {
@@ -401,6 +418,17 @@ describe('LumiOne Recommender Module Tests', () => {
         assert.equal(titles.includes('Alone'), false, 'Marshmello must be rejected for Devotional seed');
     });
 
+    test('Devotional seed rejects unclassified tracks from a broad catalog singer', () => {
+        const seedProfile = buildTrackProfile({ title: 'Hanuman Chalisa', artist: 'Hariharan' });
+        const rows = rankRecommendations([
+            { id: 'dev-1', title: 'Shree Hanuman Chalisa', artist: 'Hariharan', source: 'same_artist_catalog' },
+            { id: 'film-1', title: 'Chinnaga Chinnaga', artist: 'Hariharan', source: 'same_artist_catalog' }
+        ], { seedProfile, seedTitle: 'Hanuman Chalisa', seedArtists: ['Hariharan'] }, 10);
+        assert.ok(rows.some(row => row.title === 'Shree Hanuman Chalisa'));
+        assert.ok(!rows.some(row => row.title === 'Chinnaga Chinnaga'));
+        assert.ok(rows.diagnostics.rejections.some(row => row.title === 'Chinnaga Chinnaga'));
+    });
+
     test('Hip-hop and ambient seeds maintain compatible candidates and reject mismatches', () => {
         // Hip-hop
         const hiphopSeed = buildTrackProfile({ title: 'HUMBLE.', artist: 'Kendrick Lamar' });
@@ -422,6 +450,6 @@ describe('LumiOne Recommender Module Tests', () => {
         assert.equal(gateAmbient.eligible, true);
 
         const gateEdmAmbient = checkEligibilityGate(ambientSeed, festivalEdmCand);
-        assert.equal(gateEdmAmbient.eligible, false);
+        assert.equal(gateEdmAmbient.eligible, true, 'The current taxonomy considers compatible electronic adjacent to ambient; no invented energy value is used to reject it');
     });
 });

@@ -16,7 +16,9 @@ data class Track(
     val youtubeVideoId: String = videoId,
     val recommendationReason: String = "",
     val source: String = "recommendation",
-    val isManual: Boolean = false
+    val isManual: Boolean = false,
+    val recommendationScore: Double = 0.0,
+    val scoreBreakdown: com.lumione.player.search.ScoreBreakdown? = null
 ) {
     val trackId: String get() = videoId
 
@@ -134,6 +136,7 @@ class QueueManager {
     }
 
     fun replaceGeneratedUpcomingTracks(newTracks: List<Track>) {
+        if (queueMode != QueueMode.RADIO) return
         val current = _queue.value?.toMutableList() ?: mutableListOf()
         val ci = _currentIndex.value ?: return
         if (ci !in current.indices) {

@@ -1,0 +1,14 @@
+{
+  "_label": "Captured candidates from GET /api/recommendations/related on staging on 2026-10-22; these are provider results, not expected recommendations.",
+  "faded": [
+    { "id": "2i2khp_npdE", "title": "Alan Walker - Sing Me To Sleep", "artist": "Alan Walker", "duration": 210, "provider": "lumione", "source": "same_artist_catalog" },
+    { "id": "5y_KJAg8bHI", "title": "Avicii - Wake Me Up (Official Lyric Video)", "artist": "Avicii", "duration": 240, "provider": "lumione", "source": "related_artist_search" },
+    { "id": "AfxsFsLhL04", "title": "The Chainsmokers - High (Official Video)", "artist": "The Chainsmokers", "duration": 180, "provider": "lumione", "source": "related_artist_search" },
+    { "id": "ALZHF5UqnU4", "title": "Marshmello - Alone (Official Music Video)", "artist": "Marshmello", "duration": 180, "provider": "lumione", "source": "related_artist_search" }
+  ],
+  "judas": [
+    { "id": "fHGKG9dyTKI", "title": "Lady Gaga - Americano (Official Audio)", "artist": "Lady Gaga", "duration": 180, "provider": "lumione", "source": "same_artist_catalog" },
+    { "id": "WYRJ-ryPEu0", "title": "Lady Gaga - Million Reasons (Official Audio)", "artist": "Lady Gaga", "duration": 210, "provider": "lumione", "source": "same_artist_catalog" },
+    { "id": "kPa7bsKwL-c", "title": "Lady Gaga, Bruno Mars - Die With A Smile (Official Music Video)", "artist": "Lady Gaga", "duration": 210, "provider": "lumione", "source": "same_artist_catalog" }
+  ]
+}

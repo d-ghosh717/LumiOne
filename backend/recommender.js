@@ -6,11 +6,11 @@
  * 2. Non-music video rejection (filtering gaming, ASMR, vlogs, meme loops, commentary)
  * 3. Alternate-version detection and deduplication (slowed, sped-up, lo-fi, remixes, covers)
  * 4. Multi-factor scoring (artist affinity, behavior signals, discovery bonus, saturation penalties)
- * 5. Cold-start fallback (curated chart discovery with maximum artist diversity)
+ * 5. Limited results when no eligible seed-related candidates are available
  */
 
 // ─── Non-Music Video Filter ─────────────────────────────────────────────
-const NON_MUSIC_REGEX = /\b(gameplay|walkthrough|playthrough|let'?s play|lets play|gta\s*[5v]|gta\s*online|fortnite|roblox|minecraft|free\s*fire|pubg|call\s*of\s*duty|cod|valorant|apex\s*legends|speedrun|cutscenes?|game\s*trailer|asmr|mukbang|slime|satisfying|unboxing|prank|comedy video|funny video|funny\s*moments|puzzle|riddle|challenge|diy|crafts|life\s*hacks|vlog|daily vlog|reaction to|reacting|roast|news live|live stream|livestream|full movie|full episode|episode \d+|season \d+|tier list|audiobook|podcast|interview|shorts|meme|compilation|sfx|sound effects?|10 hour|1 hour loop|24\/7|karaoke backing track|full album|best of [a-zA-Z0-9\s]+ full album|greatest hits full album|album mix|iconic hits & new songs)\b/i;
+const NON_MUSIC_REGEX = /\b(gameplay|walkthrough|playthrough|let'?s play|lets play|gta\s*[5v]|gta\s*online|fortnite|roblox|minecraft|free\s*fire|pubg|call\s*of\s*duty|cod|valorant|apex\s*legends|speedrun|cutscenes?|game\s*trailer|asmr|mukbang|slime|satisfying|unboxing|prank|comedy video|funny video|funny\s*moments|puzzle|riddle|challenge|diy|crafts|life\s*hacks|vlog|daily vlog|reaction to|reacting|roast|news live|live stream|livestream|full movie|full episode|episode \d+|season \d+|tier list|audiobook|podcast|interview|shorts|meme|compilation|sfx|sound effects?|10 hour|1 hour loop|24\/7|karaoke backing track|full album|best of [a-zA-Z0-9\s]+ full album|greatest hits full album|album mix|iconic hits & new songs|behind the scenes|the making of|vevo footnotes)\b/i;
 
 function isMusicContent(title, artist, durationSec) {
     if (!title || typeof title !== 'string' || title.trim().length === 0) return false;
@@ -210,6 +210,10 @@ function deduplicateAndPruneVersions(candidates, options = {}) {
             if (a.isAlternate !== b.isAlternate) {
                 return a.isAlternate ? 1 : -1;
             }
+            const sourcePriority = { watch_next: 4, related_artist_search: 3, same_artist_catalog: 2, genre_search: 1 };
+            const aPriority = Math.max(0, ...(a.retrievalSources || [a.source]).map(source => sourcePriority[source] || 0));
+            const bPriority = Math.max(0, ...(b.retrievalSources || [b.source]).map(source => sourcePriority[source] || 0));
+            if (aPriority !== bPriority) return bPriority - aPriority;
             if (a.provider === 'saavn' && b.provider !== 'saavn') return -1;
             if (b.provider === 'saavn' && a.provider !== 'saavn') return 1;
 
@@ -218,7 +222,11 @@ function deduplicateAndPruneVersions(candidates, options = {}) {
             return aDurDiff - bDurDiff;
         });
 
-        const bestTrack = variants[0];
+        const bestTrack = {
+            ...variants[0],
+            retrievalSources: [...new Set(variants.flatMap(v => [...(v.retrievalSources || []), v.source].filter(Boolean)))],
+            retrievalSourceCount: variants.length
+        };
         const { artist: parsedArtist } = parseArtistAndTitle(bestTrack.title, bestTrack.artist);
         const rawArtistList = extractArtistList(bestTrack.artist);
         const artistKeys = rawArtistList.length > 0 ? rawArtistList : [cleanArtist(parsedArtist)];
@@ -389,15 +397,14 @@ const {
     extractArtistList,
     buildTrackProfile,
     checkEligibilityGate,
-    scoreTrackProfile,
-    computeAcousticSimilarity
+    scoreTrackProfile
 } = require('./music_intelligence');
 
 /**
  * Ranks a pool of candidates using greedy selection with real-time diversity constraints.
  * Incorporates:
- * 1. Strict genre and mood eligibility gates (incompatible styles rejected pre-scoring).
- * 2. 0-100 weighted point scoring system (acoustic similarity 40, genre 25, mood/energy 20, affinity 15).
+ * 1. Strict genre eligibility gates (incompatible styles rejected pre-scoring).
+ * 2. 0-100 evidence, genre, mood/style, artist, and contextual point scoring.
  * 3. Multi-artist saturation and diversity constraints.
  * 4. Transparent development diagnostics.
  */
@@ -438,6 +445,14 @@ function rankRecommendations(candidates, userProfile = {}, limit = 20) {
         candidate.profile = candProfile;
 
         if (seedProfile) {
+            const sources = candidate.retrievalSources || [candidate.source].filter(Boolean);
+            if (seedProfile.primaryGenre === GENRE_FAMILIES.DEVOTIONAL_SPIRITUAL &&
+                !candProfile.primaryGenre && sources.some(source => ['same_artist_catalog', 'saavn_artist_catalog'].includes(source))) {
+                candidate.eligible = false;
+                candidate.rejectionReason = 'Devotional radio requires devotional metadata for catalog tracks';
+                rejections.push({ title: candidate.title, artist: candidate.artist, reason: candidate.rejectionReason });
+                continue;
+            }
             const gate = checkEligibilityGate(seedProfile, candProfile);
             if (!gate.eligible) {
                 candidate.eligible = false;
@@ -507,7 +522,26 @@ function rankRecommendations(candidates, userProfile = {}, limit = 20) {
         eligibleCount: eligiblePool.length,
         rejectedCount: rejections.length,
         rejections: rejections.slice(0, 15),
-        returnedCount: selected.length
+        returnedCount: selected.length,
+        candidateScores: cleanCandidates.map(candidate => {
+            const scored = scoreTrackProfile(candidate, seedProfile, userProfile, []);
+            return {
+                id: candidate.youtubeVideoId || candidate.providerId || candidate.id,
+                title: candidate.title,
+                artist: candidate.artist,
+                retrievalSources: candidate.retrievalSources || [candidate.source].filter(Boolean),
+                eligible: candidate.eligible,
+                rejectionReason: candidate.rejectionReason || null,
+                score: scored.totalScore,
+                scoreBreakdown: scored.breakdown,
+                genre: candidate.profile?.primaryGenre || null,
+                subgenres: candidate.profile?.subgenres || [],
+                moodTags: candidate.profile?.moodTags || [],
+                confidence: candidate.profile?.confidence || 0,
+                metadataProvenance: candidate.profile?.provenance || 'metadata_missing',
+                missingMetadata: [!candidate.profile?.primaryGenre && 'genre', !(candidate.profile?.moodTags || []).length && 'mood'].filter(Boolean)
+            };
+        })
     };
 
     return selected;
@@ -530,6 +564,6 @@ module.exports = {
     buildTrackProfile,
     checkEligibilityGate,
     scoreTrackProfile,
-    computeAcousticSimilarity,
-    GENRE_FAMILIES
+    GENRE_FAMILIES,
+    GENRE_COMPATIBILITY_MATRIX
 };

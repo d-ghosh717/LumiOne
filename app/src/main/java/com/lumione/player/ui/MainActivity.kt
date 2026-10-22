@@ -2173,6 +2173,11 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private var radioSessionToken: Long = 0L
 
     private fun playSingleSongWithRadio(track: Track) {
+        replenishmentJob?.cancel()
+        replenishmentJob = null
+        replenishmentSeedId = ""
+        replenishmentGeneration++
+        isAutoplayReplenishing = false
         val qm = playbackService?.queueManager ?: queueManager
         val manualTracks = if (qm.queueMode == QueueMode.RADIO) {
             qm.queue.value?.filter { it.isManual } ?: emptyList()
@@ -2238,7 +2243,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
                 val queueAfter = (playbackService?.queueManager ?: queueManager).queue.value ?: emptyList()
                 Log.i(TAG, "[RadioLifecycle] Queue after refresh (count=${queueAfter.size}): ${queueAfter.map { it.videoId }}")
-                Log.i(TAG, "[RadioLifecycle] First 5 upcoming after refresh: ${queueAfter.drop(1).take(5).map { "${it.title} by ${it.artist} (${it.videoId})" }}")
+                Log.i(TAG, "[RadioLifecycle] Final upcoming after refresh: ${queueAfter.drop(1).map { "${it.videoId}:${it.title} by ${it.artist} score=${it.recommendationScore} source=${it.source} breakdown=${it.scoreBreakdown}" }}")
 
                 runOnUiThread {
                     refreshQueueSheet()
@@ -2250,16 +2255,26 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     private var isAutoplayReplenishing = false
+    private var replenishmentJob: Job? = null
+    private var replenishmentSeedId: String = ""
+    private var replenishmentGeneration: Long = 0
 
     private fun checkAutoplayReplenishment(track: Track) {
         val qm = playbackService?.queueManager ?: queueManager
         if (qm.queueMode != QueueMode.RADIO) return
-        if (qm.remainingTracksCount() <= 2 && !isAutoplayReplenishing) {
+        if (qm.remainingTracksCount() <= 2) {
+            if (replenishmentSeedId == track.videoId && replenishmentJob?.isActive == true) return
+            if (replenishmentSeedId != track.videoId) {
+                replenishmentJob?.cancel()
+                replenishmentGeneration++
+                isAutoplayReplenishing = false
+            }
+            val generation = ++replenishmentGeneration
+            replenishmentSeedId = track.videoId
             isAutoplayReplenishing = true
-            mainScope.launch {
+            replenishmentJob = mainScope.launch {
                 try {
-                    val currentQueue = qm.queue.value ?: emptyList()
-                    val currentQueueKeys = currentQueue.map { 
+                    val currentQueueKeys = (playbackService?.queueManager?.queue?.value ?: queueManager.queue.value ?: emptyList()).map {
                         TrackNormalizer.extractCanonicalKey(it.title, it.artist) 
                     }.toSet()
 
@@ -2285,13 +2300,26 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                         limit = 10
                     )
 
+                    val activeQm = playbackService?.queueManager ?: queueManager
+                    val activeSeed = activeQm.currentTrack()
+                    if (generation != replenishmentGeneration || replenishmentSeedId != track.videoId ||
+                        activeQm.queueMode != QueueMode.RADIO || activeSeed?.videoId != track.videoId) {
+                        Log.i(TAG, "[RadioLifecycle] Discarding stale replenishment for '${track.title}' (${track.videoId}); current seed=${activeSeed?.videoId}")
+                        return@launch
+                    }
+
+                    val latestQueueKeys = (activeQm.queue.value ?: emptyList()).map {
+                        TrackNormalizer.extractCanonicalKey(it.title, it.artist)
+                    }.toSet()
+
                     val newTracks = related.map { it.toTrack() }.filter { cand ->
-                        !currentQueueKeys.contains(TrackNormalizer.extractCanonicalKey(cand.title, cand.artist))
+                        !latestQueueKeys.contains(TrackNormalizer.extractCanonicalKey(cand.title, cand.artist))
                     }
 
                     if (newTracks.isNotEmpty()) {
                         queueManager.appendUpcomingTracks(newTracks)
                         playbackService?.queueManager?.appendUpcomingTracks(newTracks)
+                        Log.i(TAG, "[RadioLifecycle] Replenished from seed '${track.title}' with ${newTracks.map { "${it.videoId}:${it.title} score=${it.recommendationScore} source=${it.source}" }}")
                         runOnUiThread {
                             refreshQueueSheet()
                         }
@@ -2299,7 +2327,10 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 } catch (e: Exception) {
                     Log.w(TAG, "Autoplay replenishment failed: ${e.message}")
                 } finally {
-                    isAutoplayReplenishing = false
+                    if (generation == replenishmentGeneration) {
+                        isAutoplayReplenishing = false
+                        replenishmentJob = null
+                    }
                 }
             }
         }

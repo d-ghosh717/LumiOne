@@ -9,6 +9,7 @@ import com.lumione.player.search.SearchEngine
 import com.lumione.player.search.SearchResult
 import com.lumione.player.search.TrackNormalizer
 import com.lumione.player.search.TrackProfile
+import com.lumione.player.search.toTrack
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -79,14 +80,14 @@ class RecommendationEngineTest {
     fun testArtistAffinityAndArtistDiversityConstraint() {
         // User loves The Weeknd, but recommendation row must NOT be saturated by 1 artist alone
         val candidates = listOf(
-            SearchResult(videoId = "w1", title = "Blinding Lights", artist = "The Weeknd", durationMs = 200000L, thumbnailUrl = ""),
-            SearchResult(videoId = "w2", title = "Save Your Tears", artist = "The Weeknd", durationMs = 215000L, thumbnailUrl = ""),
-            SearchResult(videoId = "w3", title = "Starboy", artist = "The Weeknd", durationMs = 230000L, thumbnailUrl = ""),
-            SearchResult(videoId = "w4", title = "Can't Feel My Face", artist = "The Weeknd", durationMs = 213000L, thumbnailUrl = ""),
-            SearchResult(videoId = "w5", title = "In The Night", artist = "The Weeknd", durationMs = 235000L, thumbnailUrl = ""),
-            SearchResult(videoId = "d1", title = "Levitating", artist = "Dua Lipa", durationMs = 203000L, thumbnailUrl = ""),
-            SearchResult(videoId = "d2", title = "Don't Start Now", artist = "Dua Lipa", durationMs = 183000L, thumbnailUrl = ""),
-            SearchResult(videoId = "h1", title = "As It Was", artist = "Harry Styles", durationMs = 167000L, thumbnailUrl = ""),
+            SearchResult(videoId = "w1", title = "Blinding Lights", artist = "The Weeknd", durationMs = 200000L, thumbnailUrl = "", source = "genre_search", retrievalSources = listOf("genre_search")),
+            SearchResult(videoId = "w2", title = "Save Your Tears", artist = "The Weeknd", durationMs = 215000L, thumbnailUrl = "", source = "genre_search", retrievalSources = listOf("genre_search")),
+            SearchResult(videoId = "w3", title = "Starboy", artist = "The Weeknd", durationMs = 230000L, thumbnailUrl = "", source = "genre_search", retrievalSources = listOf("genre_search")),
+            SearchResult(videoId = "w4", title = "Can't Feel My Face", artist = "The Weeknd", durationMs = 213000L, thumbnailUrl = "", source = "genre_search", retrievalSources = listOf("genre_search")),
+            SearchResult(videoId = "w5", title = "In The Night", artist = "The Weeknd", durationMs = 235000L, thumbnailUrl = "", source = "genre_search", retrievalSources = listOf("genre_search")),
+            SearchResult(videoId = "d1", title = "Levitating", artist = "Dua Lipa", durationMs = 203000L, thumbnailUrl = "", source = "genre_search", retrievalSources = listOf("genre_search")),
+            SearchResult(videoId = "d2", title = "Don't Start Now", artist = "Dua Lipa", durationMs = 183000L, thumbnailUrl = "", source = "genre_search", retrievalSources = listOf("genre_search")),
+            SearchResult(videoId = "h1", title = "As It Was", artist = "Harry Styles", durationMs = 167000L, thumbnailUrl = "", source = "genre_search", retrievalSources = listOf("genre_search")),
             SearchResult(videoId = "p1", title = "Circles", artist = "Post Malone", durationMs = 215000L, thumbnailUrl = "")
         )
 
@@ -148,7 +149,7 @@ class RecommendationEngineTest {
         val candidatesWithGaps = listOf(
             SearchResult(videoId = "bad1", title = "", artist = "", durationMs = 0L, thumbnailUrl = ""),
             SearchResult(videoId = "bad2", title = "   ", artist = "   ", durationMs = -100L, thumbnailUrl = ""),
-            SearchResult(videoId = "good1", title = "Blinding Lights", artist = "The Weeknd", durationMs = 200000L, thumbnailUrl = "")
+            SearchResult(videoId = "good1", title = "Blinding Lights", artist = "The Weeknd", durationMs = 200000L, thumbnailUrl = "", source = "watch_next", retrievalSources = listOf("watch_next"))
         )
 
         // Should not throw any exception
@@ -162,7 +163,7 @@ class RecommendationEngineTest {
     }
 
     @Test
-    fun testColdStartRecommendationsForNewUser() {
+    fun testGenericChartsAreNotUsedForRadioColdStart() {
         val chartCandidates = listOf(
             SearchResult(videoId = "c1", title = "Song A", artist = "Artist 1", durationMs = 200000L, thumbnailUrl = ""),
             SearchResult(videoId = "c2", title = "Song B", artist = "Artist 2", durationMs = 210000L, thumbnailUrl = ""),
@@ -175,10 +176,7 @@ class RecommendationEngineTest {
             limit = 5
         )
 
-        assertEquals(3, results.size)
-        assertEquals("Song A", results[0].title)
-        assertEquals("Song B", results[1].title)
-        assertEquals("Song C", results[2].title)
+        assertTrue("No retrieved relationship evidence means no radio recommendations", results.isEmpty())
     }
 
     @Test
@@ -401,18 +399,11 @@ class RecommendationEngineTest {
     }
 
     @Test
-    fun testEmbeatAcousticVectorCosineSimilarity() {
-        // Test identical vectors have similarity 1.0
-        val vecA = MusicIntelligence.buildAcousticVector(danceability = 0.8, energy = 0.85, valence = 0.6)
-        val simIdentical = MusicIntelligence.computeAcousticSimilarity(vecA, vecA)
-        assertEquals("Identical acoustic vectors should have similarity 1.0", 1.0, simIdentical, 0.001)
-
-        // Test opposing acoustic characteristics (high energy vs quiet ambient)
-        val vecEnergetic = MusicIntelligence.buildAcousticVector(danceability = 0.9, energy = 0.95, acousticness = 0.05)
-        val vecAmbient = MusicIntelligence.buildAcousticVector(danceability = 0.1, energy = 0.10, acousticness = 0.95)
-        val simOpposite = MusicIntelligence.computeAcousticSimilarity(vecEnergetic, vecAmbient)
-        assertTrue("Opposing vectors should have low similarity (< 0.6)", simOpposite < 0.6)
-        assertTrue("Identical vectors similarity should be significantly higher than opposing", simIdentical > simOpposite + 0.3)
+    fun testProfileDoesNotInventAudioFeaturesWhenProviderMetadataIsMissing() {
+        val profile = MusicIntelligence.buildTrackProfile(title = "Unknown title", artist = "Unknown channel")
+        assertNull(profile.primaryGenre)
+        assertEquals(0.0, profile.confidence, 0.0)
+        assertTrue(profile.moodTags.isEmpty())
     }
 
     @Test
@@ -471,10 +462,10 @@ class RecommendationEngineTest {
             seedArtists = setOf("alan walker")
         )
 
-        assertTrue("Acoustic points should be between 0 and 40", breakdown.acousticSimilarityPoints in 0.0..40.0)
+        assertTrue("Related evidence points should be between 0 and 30", breakdown.relatedEvidencePoints in 0.0..30.0)
         assertTrue("Genre points should be between 0 and 25", breakdown.genreCompatibilityPoints in 0.0..25.0)
-        assertTrue("Mood/Energy points should be between 0 and 20", breakdown.moodEnergyPoints in 0.0..20.0)
-        assertTrue("Preference points should be between 0 and 15", breakdown.preferencePoints in 0.0..15.0)
+        assertTrue("Mood/style points should be between 0 and 20", breakdown.moodStylePoints in 0.0..20.0)
+        assertTrue("Artist relationship points should be between 0 and 15", breakdown.artistRelationshipPoints in 0.0..15.0)
         assertTrue("Total score must be in 0..100 range", breakdown.totalScore in 0.0..100.0)
         assertTrue("Primary explanation must be populated", breakdown.primaryExplanation.isNotBlank())
     }
@@ -534,8 +525,8 @@ class RecommendationEngineTest {
         assertTrue("Lofi ambient should be eligible for Brian Eno seed", ambientEligible)
 
         val (edmForAmbientEligible, reasonAmbient) = MusicIntelligence.checkEligibilityGate(ambientSeedProfile, edmFestivalCand)
-        assertFalse("High-energy festival EDM should be rejected for quiet ambient seed", edmForAmbientEligible)
-        assertNotNull(reasonAmbient)
+        assertTrue("Adjacent genres remain eligible without invented energy metadata", edmForAmbientEligible)
+        assertNull(reasonAmbient)
     }
 
     @Test
@@ -713,4 +704,78 @@ class RecommendationEngineTest {
         assertEquals("pl_1", qm.currentTrack()?.videoId)
         assertEquals("pl_2", qm.peekNext()?.videoId)
     }
+
+    @Test
+    fun testFadedAndJudasProduceSeedDependentRankedResults() {
+        val candidates = listOf(
+            SearchResult("gaga_1", "Americano", "Lady Gaga", 200000, "", source = "same_artist_catalog", retrievalSources = listOf("same_artist_catalog")),
+            SearchResult("gaga_2", "Bad Romance", "Lady Gaga", 250000, "", source = "related_artist_search", retrievalSources = listOf("related_artist_search")),
+            SearchResult("avicii_1", "The Nights", "Avicii", 220000, "", source = "related_artist_search", retrievalSources = listOf("related_artist_search")),
+            SearchResult("chains_1", "Closer", "The Chainsmokers", 230000, "", source = "related_artist_search", retrievalSources = listOf("related_artist_search")),
+            SearchResult("dev_1", "Hanuman Chalisa", "Hariharan", 400000, "", source = "watch_next", retrievalSources = listOf("watch_next"))
+        )
+        val faded = searchEngine.rankRecommendationsLocally(candidates, seedArtists = listOf("Alan Walker"), seedTitle = "Faded", limit = 5)
+        val judas = searchEngine.rankRecommendationsLocally(candidates, seedArtists = listOf("Lady Gaga"), seedTitle = "Judas", limit = 5)
+        assertTrue(faded.isNotEmpty())
+        assertTrue(judas.isNotEmpty())
+        assertNotEquals(faded.map { it.videoId }, judas.map { it.videoId })
+        assertFalse(faded.any { it.title == "Hanuman Chalisa" })
+        assertTrue(judas.any { it.artist == "Lady Gaga" })
+    }
+
+    @Test
+    fun testRecordingFromMultipleSourcesDeduplicatesAndRetainsEvidence() {
+        val candidates = listOf(
+            SearchResult("v1", "The Nights", "Avicii", 220000, "", source = "genre_search", retrievalSources = listOf("genre_search")),
+            SearchResult("v1", "The Nights (Official Audio)", "Avicii - Topic", 220000, "", source = "watch_next", retrievalSources = listOf("watch_next"))
+        )
+        val deduped = TrackNormalizer.deduplicateAndFilter(candidates, maxPerArtist = 4)
+        assertEquals(1, deduped.size)
+        assertTrue(deduped.single().retrievalSources.contains("watch_next"))
+        assertTrue(deduped.single().retrievalSources.contains("genre_search"))
+    }
+
+    @Test
+    fun testWatchNextEvidenceOutranksWeakerSearchEvidence() {
+        val seed = MusicIntelligence.buildTrackProfile("Faded", "Alan Walker")
+        val weak = SearchResult("weak", "The Nights", "Avicii", 200000, "", source = "genre_search", retrievalSources = listOf("genre_search"))
+        val strong = weak.copy(videoId = "strong", source = "watch_next", retrievalSources = listOf("watch_next"))
+        val weakScore = MusicIntelligence.scoreCandidate(weak, MusicIntelligence.buildTrackProfile(weak.title, weak.artist), seed, seedArtists = setOf("alan walker"))
+        val strongScore = MusicIntelligence.scoreCandidate(strong, MusicIntelligence.buildTrackProfile(strong.title, strong.artist), seed, seedArtists = setOf("alan walker"))
+        assertTrue(strongScore.totalScore > weakScore.totalScore)
+        assertEquals(30.0, strongScore.relatedEvidencePoints, 0.0)
+    }
+
+    @Test
+    fun testUnknownChartCandidatesDoNotFillRadioResults() {
+        val chart = SearchResult("chart", "Random Track", "Unknown Performer", 200000, "", source = "generic_chart")
+        val ranked = searchEngine.rankRecommendationsLocally(listOf(chart), seedArtists = listOf("Alan Walker"), seedTitle = "Faded", limit = 10)
+        assertTrue(ranked.isEmpty())
+    }
+
+    @Test
+    fun testQueueConsumesRankedResultsAndProviderFailureDoesNotPolluteQueue() {
+        val qm = com.lumione.player.queue.QueueManager()
+        val seed = Track("seed", "Faded", "Alan Walker")
+        qm.setQueue(listOf(seed), 0, com.lumione.player.queue.QueueMode.RADIO)
+        val ranked = searchEngine.rankRecommendationsLocally(
+            listOf(SearchResult("next", "The Nights", "Avicii", 220000, "", source = "related_artist_search", retrievalSources = listOf("related_artist_search"))),
+            seedArtists = listOf("Alan Walker"), seedTitle = "Faded", limit = 5
+        )
+        qm.replaceGeneratedUpcomingTracks(ranked.map { it.toTrack() })
+        assertEquals("next", qm.queue.value?.getOrNull(1)?.videoId)
+        qm.replaceGeneratedUpcomingTracks(emptyList())
+        assertEquals(listOf("seed"), qm.queue.value?.map { it.videoId })
+    }
+
+    @Test
+    fun testManualQueueItemsAndExplicitPlaylistOrderingArePreserved() {
+        val qm = com.lumione.player.queue.QueueManager()
+        val tracks = listOf(Track("one", "One", "Artist"), Track("two", "Two", "Artist"))
+        qm.setQueue(tracks, 0, com.lumione.player.queue.QueueMode.PLAYLIST_OR_FAVORITES)
+        qm.replaceGeneratedUpcomingTracks(listOf(Track("replacement", "Replacement", "Artist")))
+        assertEquals(listOf("one", "two"), qm.queue.value?.map { it.videoId })
+        assertEquals(com.lumione.player.queue.QueueMode.PLAYLIST_OR_FAVORITES, qm.queueMode)
+    }
+
 }

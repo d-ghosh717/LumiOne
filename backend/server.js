@@ -288,17 +288,8 @@ app.post('/api/recommendations', optionalFirebaseAuth, async (req, res) => {
 
     const candidates = [];
 
-    // 1. Fetch verified official charts (JioSaavn)
-    try {
-        const chartTracks = await fetchJioSaavnCharts();
-        if (chartTracks && chartTracks.length > 0) {
-            candidates.push(...chartTracks);
-        }
-    } catch (e) {
-        console.warn(`[RECOMMENDATIONS] JioSaavn chart fetch warning: ${e.message}`);
-    }
-
-    // 2. Fetch targeted candidates for seed / favorite artists if provided
+    // Retrieve only seed or user-profile related artists. Charts belong to /api/trending
+    // and are never candidates for a radio or recommendation response.
     const targetArtists = [...new Set([
         ...(userProfile.seedArtists || []),
         ...(userProfile.likedArtists || []),
@@ -319,14 +310,6 @@ app.post('/api/recommendations', optionalFirebaseAuth, async (req, res) => {
         } catch (e) {
             console.warn(`[RECOMMENDATIONS] Artist seed query warning: ${e.message}`);
         }
-    }
-
-    // Fallback if candidates pool is low
-    if (candidates.length < 10) {
-        try {
-            const fallbackHits = await youtubeSearch('top music hits 2026 official audio', 15);
-            candidates.push(...fallbackHits);
-        } catch (_) {}
     }
 
     // Rank candidates using our hybrid scoring engine with diversity and deduplication
@@ -507,141 +490,131 @@ async function fetchJioSaavnArtistSongs(artist, maxResults = 10) {
     }
 }
 
-// ─── API: Related Tracks for Currently Playing Song (Up Next) ─────
+// ─── API: Seed-dependent radio / related tracks ───────────────────
 app.get('/api/recommendations/related', optionalFirebaseAuth, async (req, res) => {
-    const startTime = Date.now();
-    const rawTitle = req.query.title || '';
-    const rawArtist = req.query.artist || '';
-    const videoId = req.query.videoId || '';
-    const limit = Math.min(Math.max(Number(req.query.limit) || 12, 5), 25);
-
+    const startedAt = Date.now();
+    const rawTitle = String(req.query.title || '').trim();
+    const rawArtist = String(req.query.artist || '').trim();
+    const videoId = String(req.query.videoId || '').trim();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 12, 1), 25);
     if (!rawTitle && !rawArtist && !videoId) {
         return res.status(400).json({ error: 'At least title, artist, or videoId must be provided.' });
     }
 
-    let { artist: effectiveArtist, title: effectiveTitle } = recommender.parseArtistAndTitle(rawTitle, rawArtist);
-    if (!effectiveArtist && rawArtist) effectiveArtist = rawArtist;
-    if (!effectiveTitle && rawTitle) effectiveTitle = rawTitle;
-
-    // Phase 2: Build structured TrackProfile for seed track
-    const seedProfile = recommender.buildTrackProfile({
-        title: effectiveTitle || rawTitle,
-        artist: effectiveArtist || rawArtist,
-        videoId,
-        durationSec: Number(req.query.duration) || 210
+    const parsedSeed = recommender.parseArtistAndTitle(rawTitle, rawArtist);
+    const title = parsedSeed.title || rawTitle;
+    const artist = parsedSeed.artist || rawArtist;
+    const seedProfile = recommender.buildTrackProfile({ title, artist });
+    const seedKey = recommender.extractCanonicalKey(title, artist);
+    const normalizedArtist = recommender.cleanArtist(artist);
+    const providers = app.locals.recommendationProviders || {
+        youtubeSearch,
+        fetchYouTubeWatchNext,
+        fetchJioSaavnArtistSongs
+    };
+    const tasks = [];
+    const searchTask = (name, query, maxResults, validate) => tasks.push({
+        name,
+        run: async () => (await providers.youtubeSearch(query, maxResults))
+            .map(item => ({ ...item, source: name, retrievalSources: [name], sourceQuery: query }))
+            .filter(validate)
     });
 
-    console.log(`[RELATED] Finding Up Next music for '${effectiveTitle}' by '${effectiveArtist}' (genre=${seedProfile.primaryGenre}, energy=${seedProfile.energy}, mood=${seedProfile.moodTags.join('/')}, videoId=${videoId})`);
-
-    const seedKey = recommender.extractCanonicalKey(effectiveTitle || rawTitle, effectiveArtist || rawArtist);
-    const candidatePromises = [];
-
-    // 1. YouTube Watch Next / algorithmic related videos if videoId present
-    if (videoId && videoId.length === 11 && !videoId.startsWith('RD')) {
-        candidatePromises.push(
-            fetchYouTubeWatchNext(videoId, 20).then(items =>
-                items.map(it => ({ ...it, source: 'watch_next', explanation: 'From YouTube Watch Next related mix' }))
-            )
-        );
+    if (/^[A-Za-z0-9_-]{11}$/.test(videoId) && !videoId.startsWith('RD')) {
+        tasks.push({ name: 'watch_next', run: async () => (await providers.fetchYouTubeWatchNext(videoId, 25))
+            .map(item => ({ ...item, source: 'watch_next', retrievalSources: ['watch_next'] })) });
+    }
+    if (artist) {
+        searchTask('same_artist_catalog', `${artist} songs official audio`, 15, item => {
+            const parsed = recommender.parseArtistAndTitle(item.title, item.artist);
+            return recommender.cleanArtist(parsed.artist) === normalizedArtist;
+        });
     }
 
-    // 2. Artist catalog queries
-    if (effectiveArtist) {
-        candidatePromises.push(
-            youtubeSearch(`${effectiveArtist} top songs official audio`, 10).then(items =>
-                items.map(it => ({ ...it, source: 'seed_artist', explanation: `Top track by ${effectiveArtist}` }))
-            )
-        );
-
-        // Only query JioSaavn when seed is from an Indian/Desi/Devotional catalog
-        const isIndianOrDevotional = [
-            recommender.GENRE_FAMILIES.BOLLYWOOD_DESI,
-            recommender.GENRE_FAMILIES.INDIAN_REGIONAL_DESI,
-            recommender.GENRE_FAMILIES.DEVOTIONAL_SPIRITUAL
-        ].includes(seedProfile.primaryGenre);
-
-        if (isIndianOrDevotional) {
-            candidatePromises.push(fetchJioSaavnArtistSongs(effectiveArtist, 10));
-        }
-    }
-
-    // 3. Related Artists queries (based on taxonomy linkages)
     const relatedArtists = seedProfile.relatedArtists || [];
-    if (relatedArtists.length > 0) {
-        const topRelated = relatedArtists.slice(0, 3);
-        for (const relArtist of topRelated) {
-            candidatePromises.push(
-                youtubeSearch(`${relArtist} top hits official audio`, 6).then(items =>
-                    items.map(it => ({
-                        ...it,
-                        source: 'related_artist',
-                        explanation: `Similar artist: ${relArtist}`
-                    }))
-                )
-            );
+    for (const relatedArtist of relatedArtists.slice(0, 4)) {
+        searchTask('related_artist_search', `${relatedArtist} songs official audio`, 7, item => {
+            const parsed = recommender.parseArtistAndTitle(item.title, item.artist);
+            return recommender.cleanArtist(parsed.artist) === recommender.cleanArtist(relatedArtist);
+        });
+    }
+
+    if (seedProfile.primaryGenre) {
+        const styles = (seedProfile.subgenres || []).slice(0, 3).join(' ');
+        const query = `${styles || seedProfile.primaryGenre.replace(/_/g, ' ')} similar songs official audio`;
+        searchTask('genre_search', query, 10, item => {
+            const profile = recommender.buildTrackProfile(item);
+            if (!profile.primaryGenre) return false;
+            const family = recommender.GENRE_COMPATIBILITY_MATRIX[seedProfile.primaryGenre];
+            return family?.[profile.primaryGenre] > 0;
+        });
+    }
+
+    const settled = await Promise.all(tasks.map(async task => {
+        try {
+            const results = await task.run();
+            return { source: task.name, status: 'ok', count: results.length, results };
+        } catch (error) {
+            return { source: task.name, status: 'failed', count: 0, error: error.message, results: [] };
+        }
+    }));
+    let candidates = settled.flatMap(result => result.results);
+
+    // Only the seed's own catalog can contribute Saavn candidates; never mix in global charts.
+    if ([recommender.GENRE_FAMILIES.BOLLYWOOD_DESI, recommender.GENRE_FAMILIES.INDIAN_REGIONAL_DESI,
+        recommender.GENRE_FAMILIES.DEVOTIONAL_SPIRITUAL].includes(seedProfile.primaryGenre) && artist) {
+        try {
+            const saavn = await providers.fetchJioSaavnArtistSongs(artist, 10);
+            const ownArtist = saavn.filter(item => {
+                const parsed = recommender.parseArtistAndTitle(item.title, item.artist);
+                return recommender.extractArtistList(parsed.artist).map(recommender.cleanArtist).includes(normalizedArtist);
+            }).map(item => ({ ...item, source: 'same_artist_catalog', retrievalSources: ['same_artist_catalog'] }));
+            candidates.push(...ownArtist);
+            settled.push({ source: 'saavn_artist_catalog', status: 'ok', count: ownArtist.length });
+        } catch (error) {
+            settled.push({ source: 'saavn_artist_catalog', status: 'failed', count: 0, error: error.message });
         }
     }
 
-    // 4. Genre & Style queries based on seedProfile
-    const genreKeywords = (seedProfile.primaryGenre || 'music').replace(/_/g, ' ');
-    const primarySubgenre = (seedProfile.subgenres && seedProfile.subgenres[0]) || '';
-    candidatePromises.push(
-        youtubeSearch(`${genreKeywords} ${primarySubgenre} top songs official audio`, 8).then(items =>
-            items.map(it => ({
-                ...it,
-                source: 'related_search',
-                explanation: `Similar ${genreKeywords} music`
-            }))
-        )
-    );
-
-    // Notice: fetchJioSaavnCharts() is intentionally NOT included here.
-    // Up Next must contain strictly related music, never generic trending charts.
-
-    const settled = await Promise.allSettled(candidatePromises);
-    const candidates = [];
-    const sourceCounts = {};
-    for (const r of settled) {
-        if (r.status === 'fulfilled' && Array.isArray(r.value)) {
-            for (const item of r.value) {
-                candidates.push(item);
-                sourceCounts[item.source || 'unknown'] = (sourceCounts[item.source || 'unknown'] || 0) + 1;
-            }
+    // Add all contributing channels to a recording before canonical deduplication.
+    const byRecording = new Map();
+    for (const candidate of candidates) {
+        const id = candidate.youtubeVideoId || candidate.id || candidate.providerId;
+        if (!id) continue;
+        const provider = candidate.provider || 'lumione';
+        const key = `${provider}:${id}`;
+        const previous = byRecording.get(key);
+        if (previous) {
+            previous.retrievalSources = [...new Set([...(previous.retrievalSources || []), ...(candidate.retrievalSources || [])])];
+        } else {
+            const parsed = recommender.parseArtistAndTitle(candidate.title, candidate.artist);
+            byRecording.set(key, { ...candidate, artist: parsed.artist || candidate.artist, title: parsed.title || candidate.title });
         }
     }
-
-    // Build user profile constraints
-    let recentKeys = [seedKey];
+    candidates = [...byRecording.values()];
+    const recentKeys = [seedKey];
     if (req.query.recentKeys) {
         try {
-            const parsed = JSON.parse(req.query.recentKeys);
-            if (Array.isArray(parsed)) recentKeys.push(...parsed);
-        } catch (_) {
-            if (typeof req.query.recentKeys === 'string') {
-                recentKeys.push(...req.query.recentKeys.split(','));
-            }
-        }
+            const recent = JSON.parse(String(req.query.recentKeys));
+            if (Array.isArray(recent)) recentKeys.push(...recent.map(String));
+        } catch (_) {}
     }
-
-    const userProfile = {
+    const ranked = recommender.rankRecommendations(candidates, {
         seedProfile,
-        seedTitle: effectiveTitle || rawTitle,
-        seedArtists: [effectiveArtist, rawArtist].filter(Boolean),
+        seedTitle: title,
+        seedArtists: [artist],
         recentTrackKeys: recentKeys,
         excludeKeys: [seedKey]
-    };
-
-    const ranked = recommender.rankRecommendations(candidates, userProfile, limit);
-    const latencyMs = Date.now() - startTime;
-
+    }, limit);
     return res.json({
+        seed: { title, artist, videoId },
         seedProfile,
         results: ranked,
         diagnostics: {
-            latencyMs,
+            latencyMs: Date.now() - startedAt,
+            sourceRuns: settled.map(({ source, status, count, error }) => ({ source, status, count, ...(error ? { error } : {}) })),
             totalRetrieved: candidates.length,
-            candidateSourceCounts: sourceCounts,
-            ...(ranked.diagnostics || {})
+            ...ranked.diagnostics
         },
         totalCandidates: candidates.length,
         returnedCount: ranked.length

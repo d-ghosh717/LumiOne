@@ -160,4 +160,36 @@ class QueueManagerTest {
         assertEquals("p2", queueManager.peekNext()?.videoId)
         assertFalse(queueManager.queueMode == com.lumione.player.queue.QueueMode.RADIO)
     }
+
+    @Test
+    fun upNextProjectionMatchesThePlaybackQueueAndTracksRemoval() {
+        val tracks = listOf(
+            Track("current", "Current", "Artist"),
+            Track("next", "Next", "Artist"),
+            Track("later", "Later", "Artist")
+        )
+        queueManager.setQueue(tracks, 0, com.lumione.player.queue.QueueMode.RADIO)
+        assertEquals(listOf("next", "later"), queueManager.upcomingTracks().map { it.videoId })
+        queueManager.removeAt(1)
+        assertEquals(listOf("later"), queueManager.upcomingTracks().map { it.videoId })
+    }
+
+    @Test
+    fun moveUpcomingReordersUpcomingTracksWhileKeepingCurrentTrackFixed() {
+        val tracks = listOf(
+            Track("current", "Current", "Artist"),
+            Track("next1", "Next 1", "Artist"),
+            Track("next2", "Next 2", "Artist"),
+            Track("next3", "Next 3", "Artist")
+        )
+        queueManager.setQueue(tracks, 0, com.lumione.player.queue.QueueMode.RADIO)
+        assertTrue(queueManager.moveUpcoming(0, 2))
+        assertEquals("current", queueManager.currentTrack()?.videoId)
+        assertEquals(listOf("next2", "next3", "next1"), queueManager.upcomingTracks().map { it.videoId })
+        assertEquals("next2", queueManager.peekNext()?.videoId)
+
+        // Invalid moves return false
+        assertFalse(queueManager.moveUpcoming(-1, 0))
+        assertFalse(queueManager.moveUpcoming(0, 5))
+    }
 }

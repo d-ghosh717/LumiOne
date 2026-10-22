@@ -16,10 +16,19 @@ import com.lumione.player.queue.Track
 class QueueTrackAdapter(
     private val tracks: MutableList<Track> = mutableListOf(),
     private val onTrackClick: (Track, Int) -> Unit,
-    private val onRemoveClick: ((Track, Int) -> Unit)? = null
+    private val onRemoveClick: ((Track, Int) -> Unit)? = null,
+    private val onStartDrag: ((RecyclerView.ViewHolder) -> Unit)? = null
 ) : RecyclerView.Adapter<QueueTrackAdapter.QueueViewHolder>() {
 
     private var currentPlayingId: String? = null
+
+    fun moveItem(from: Int, to: Int) {
+        if (from in tracks.indices && to in tracks.indices && from != to) {
+            val item = tracks.removeAt(from)
+            tracks.add(to, item)
+            notifyItemMoved(from, to)
+        }
+    }
 
     fun setTracks(newTracks: List<Track>) {
         tracks.clear()
@@ -43,8 +52,9 @@ class QueueTrackAdapter(
         holder.bind(
             track = track,
             isPlaying = (track.videoId == currentPlayingId),
-            onClick = { onTrackClick(track, position) },
-            onRemove = onRemoveClick?.let { callback -> { callback(track, position) } }
+            onClick = { holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let { onTrackClick(track, it) } },
+            onRemove = onRemoveClick?.let { callback -> { holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let { callback(track, it) } } },
+            onDrag = onStartDrag?.let { callback -> { callback(holder) } }
         )
     }
 
@@ -58,12 +68,14 @@ class QueueTrackAdapter(
         private val artist: TextView = itemView.findViewById(R.id.queueTrackArtist)
         private val duration: TextView = itemView.findViewById(R.id.queueDuration)
         private val btnRemove: ImageButton = itemView.findViewById(R.id.btnQueueRemove)
+        private val dragHandle: ImageView = itemView.findViewById(R.id.queueDragHandle)
 
         fun bind(
             track: Track,
             isPlaying: Boolean,
             onClick: () -> Unit,
-            onRemove: (() -> Unit)?
+            onRemove: (() -> Unit)?,
+            onDrag: (() -> Unit)?
         ) {
             title.text = track.title
             artist.text = track.artist
@@ -89,6 +101,12 @@ class QueueTrackAdapter(
                 btnRemove.setOnClickListener { onRemove() }
             } else {
                 btnRemove.visibility = View.GONE
+            }
+
+            dragHandle.visibility = if (onDrag != null) View.VISIBLE else View.GONE
+            dragHandle.setOnTouchListener { _, event ->
+                if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) onDrag?.invoke()
+                false
             }
 
             itemView.setOnClickListener { onClick() }

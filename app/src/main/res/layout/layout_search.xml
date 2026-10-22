@@ -65,6 +65,61 @@
             android:contentDescription="Clear search" />
     </FrameLayout>
 
+    <LinearLayout
+        android:id="@+id/recentSearchesSection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginBottom="8dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Recent searches"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:fontFamily="@font/plus_jakarta_sans" />
+
+            <TextView
+                android:id="@+id/btnClearRecentSearches"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="6dp"
+                android:text="Clear"
+                android:textColor="@color/primary_cyan"
+                android:textSize="12sp"
+                android:fontFamily="@font/manrope" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/recentSearchesEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:text="Your recent searches will appear here."
+            android:textColor="@color/text_dim"
+            android:textSize="13sp"
+            android:fontFamily="@font/manrope"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/recentSearchesContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </LinearLayout>
+
     <!-- Quick Search Pill Chips -->
     <HorizontalScrollView
         android:id="@+id/searchTagsScroll"
@@ -173,7 +228,8 @@
     <LinearLayout
         android:id="@+id/searchEmptyState"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:orientation="vertical"
         android:gravity="center"
         android:padding="32dp"
@@ -211,7 +267,8 @@
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/searchTabResultsList"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:clipToPadding="false"
         android:paddingBottom="220dp"
         android:overScrollMode="never"

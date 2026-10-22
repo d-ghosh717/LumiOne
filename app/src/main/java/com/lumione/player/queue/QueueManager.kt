@@ -99,6 +99,12 @@ class QueueManager {
         return (q.size - 1 - ci).coerceAtLeast(0)
     }
 
+    fun upcomingTracks(): List<Track> {
+        val tracks = _queue.value.orEmpty()
+        val current = _currentIndex.value ?: -1
+        return tracks.drop((current + 1).coerceAtLeast(0))
+    }
+
     fun appendUpcomingTracks(newTracks: List<Track>) {
         if (newTracks.isEmpty()) return
         val current = _queue.value?.toMutableList() ?: mutableListOf()
@@ -199,6 +205,20 @@ class QueueManager {
             in (minOf(from, to)..maxOf(from, to)) -> if (from < to) ci - 1 else ci + 1
             else -> ci
         }
+    }
+
+    /** Reorders upcoming items only; the active item and its index stay fixed. */
+    fun moveUpcoming(fromUpcoming: Int, toUpcoming: Int): Boolean {
+        val current = _queue.value?.toMutableList() ?: return false
+        val firstUpcoming = (_currentIndex.value ?: -1) + 1
+        val from = firstUpcoming + fromUpcoming
+        val to = firstUpcoming + toUpcoming
+        if (fromUpcoming < 0 || toUpcoming < 0 || from !in current.indices || to !in current.indices) return false
+        if (from == to) return true
+        val item = current.removeAt(from)
+        current.add(to, item)
+        _queue.value = current
+        return true
     }
 
     fun clearQueue() {

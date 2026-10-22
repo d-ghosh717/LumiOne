@@ -6,6 +6,7 @@ import com.lumione.player.player.TrackMatcher
 import com.lumione.player.queue.Track
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 data class HistoryEntry(
     val track: Track,
@@ -26,12 +27,13 @@ class HistoryManager(private val prefs: SharedPreferences) {
         private const val KEY_HISTORY = "history_entries"
         private const val MAX_HISTORY_SIZE = 100
 
-        @Volatile
-        private var instance: HistoryManager? = null
+        private val instances = ConcurrentHashMap<String, HistoryManager>()
 
-        fun getInstance(context: Context): HistoryManager {
-            return instance ?: synchronized(this) {
-                instance ?: HistoryManager(context).also { instance = it }
+        fun getInstance(context: Context, uid: String? = null): HistoryManager {
+            val key = uid ?: "legacy"
+            val prefsName = if (uid == null) PREFS_NAME else "${PREFS_NAME}_${uid.replace(Regex("[^A-Za-z0-9_-]"), "_")}"
+            return instances.getOrPut(key) {
+                HistoryManager(context.applicationContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE))
             }
         }
     }
@@ -67,6 +69,23 @@ class HistoryManager(private val prefs: SharedPreferences) {
         }
 
         saveHistory(currentHistory)
+    }
+
+    @Synchronized
+    fun mergeEntries(incoming: List<HistoryEntry>) {
+        val byIdentity = LinkedHashMap<String, HistoryEntry>()
+        (getHistory() + incoming).forEach { entry ->
+            val key = entry.track.provider + ":" + (entry.track.providerId.ifBlank { entry.track.videoId })
+            val existing = byIdentity[key]
+            if (existing == null || entry.timestamp > existing.timestamp) {
+                byIdentity[key] = entry.copy(
+                    playCount = maxOf(entry.playCount, existing?.playCount ?: 0),
+                    completionCount = maxOf(entry.completionCount, existing?.completionCount ?: 0),
+                    skipCount = maxOf(entry.skipCount, existing?.skipCount ?: 0)
+                )
+            }
+        }
+        saveHistory(byIdentity.values.sortedByDescending { it.timestamp }.take(MAX_HISTORY_SIZE))
     }
 
     @Synchronized

@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
 import android.graphics.Color
@@ -24,10 +25,16 @@ import com.bumptech.glide.load.resource.bitmap.CircleCrop
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners
 import com.lumione.player.R
 import com.lumione.player.auth.AuthManager
+import com.lumione.player.auth.AuthGatePolicy
+import com.lumione.player.auth.AuthState
 import com.lumione.player.data.FavoritesManager
 import com.lumione.player.data.HistoryManager
 import com.lumione.player.data.Playlist
 import com.lumione.player.data.PlaylistManager
+import com.lumione.player.data.AccountLibrarySync
+import com.lumione.player.data.RecentSearch
+import com.lumione.player.data.RecentSearchManager
+import com.lumione.player.data.PlaybackHistoryRecorder
 import com.lumione.player.queue.QueueManager
 import com.lumione.player.queue.QueueMode
 import com.lumione.player.queue.RepeatMode
@@ -46,9 +53,16 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private val queueManager = QueueManager()
     private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val authManager by lazy { AuthManager(this) }
-    private val favoritesManager by lazy { FavoritesManager.getInstance(this) }
-    private val historyManager by lazy { HistoryManager.getInstance(this) }
-    private val playlistManager by lazy { PlaylistManager.getInstance(this) }
+    private lateinit var favoritesManager: FavoritesManager
+    private lateinit var historyManager: HistoryManager
+    private lateinit var playlistManager: PlaylistManager
+    private var recentSearchManager: RecentSearchManager? = null
+    private var accountLibrarySync: AccountLibrarySync? = null
+    private var accountSyncJob: Job? = null
+    private var accountSyncUid: String? = null
+    private var activeAccountUid: String? = null
+    private val playbackHistoryRecorder = PlaybackHistoryRecorder()
+    private var searchDebounceJob: Job? = null
 
     private var playbackService: PlaybackService? = null
     private var isServiceBound = false
@@ -60,8 +74,10 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             isServiceBound = true
             playbackService?.setListener(this@MainActivity)
             playbackService?.let { s ->
+                s.queueManager.queue.observe(this@MainActivity) { refreshQueueViews() }
                 updatePlayPauseIcons(s.isPlaying)
                 s.queueManager.currentTrack()?.let { updateTrackUI(it) }
+                refreshQueueViews()
             }
         }
 
@@ -79,14 +95,19 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             data = data,
             onSuccess = { user ->
                 Toast.makeText(this, "Signed in as ${user.displayName ?: user.email}", Toast.LENGTH_SHORT).show()
+                activateAccount(user.uid)
+                showSignInGate(false)
+                syncAccountLibrary()
                 updateProfileView()
                 loadTrendingTracks()
             },
             onError = { error ->
                 Toast.makeText(this, "Sign-in error: $error", Toast.LENGTH_LONG).show()
+                showSignInError(error)
                 updateProfileView()
             },
             onCancelled = {
+                showSignInGate(!authManager.isUserSignedIn())
                 updateProfileView()
             }
         )
@@ -97,7 +118,10 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private lateinit var includeSearch: View
     private lateinit var includeLibrary: View
     private lateinit var includeProfile: View
-    private var currentNavTab = 0
+    private lateinit var mainContentContainer: View
+    private lateinit var bottomNavBar: View
+    private var currentNavTab = -1
+    private var navigationTransitionToken = 0
 
     // ─── Bottom Navigation Views ─────────────────────────────────────────────
     private lateinit var navTabHome: View
@@ -233,10 +257,12 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     // ─── Now Playing Full Player Views ────────────────────────────────────────
     private lateinit var fullPlayerContainer: View
     private lateinit var btnCollapseNowPlaying: ImageButton
-    private lateinit var btnNowPlayingQueue: ImageButton
     private lateinit var nowPlayingVinylDisc: VinylDiscView
     private lateinit var nowPlayingWaveform: CyanWaveformView
     private lateinit var turntableTonearm: ImageView
+    private var tonearmPlaying = false
+    private var trackPreparing = false
+    private var tonearmAnimator: ObjectAnimator? = null
     private lateinit var fullTrackTitle: TextView
     private lateinit var fullArtistName: TextView
     private lateinit var btnNowPlayingAddToPlaylist: ImageButton
@@ -248,6 +274,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private lateinit var btnFullPrev: ImageButton
     private lateinit var btnFullPlayPause: View
     private lateinit var fullPlayPauseIcon: ImageView
+    private lateinit var trackPreparingIndicator: ProgressBar
     private lateinit var btnFullNext: ImageButton
     private lateinit var btnFullRepeat: ImageButton
     private lateinit var fullQualityBadge: TextView
@@ -260,6 +287,17 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private lateinit var queueEmptyState: View
     private lateinit var queueSheetRecycler: RecyclerView
     private lateinit var queueSheetAdapter: QueueTrackAdapter
+    private lateinit var nowPlayingUpNextRecycler: RecyclerView
+    private lateinit var nowPlayingQueueCount: TextView
+    private lateinit var nowPlayingQueueEmpty: View
+    private lateinit var signInGate: View
+    private lateinit var signInErrorText: TextView
+    private lateinit var signInProgress: View
+    private lateinit var btnContinueWithGoogle: View
+    private lateinit var recentSearchesSection: View
+    private lateinit var recentSearchesContainer: LinearLayout
+    private lateinit var recentSearchesEmpty: View
+    private lateinit var btnClearRecentSearches: View
 
     // ─── Playlist Detail Overlay Views ────────────────────────────────────────
     private lateinit var playlistDetailContainer: View
@@ -286,6 +324,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        activateAccount(authManager.getCurrentUser()?.uid)
         bindAllViews()
         setupHomeScreen()
         setupSearchScreen()
@@ -297,6 +336,22 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         setupMiniPlayer()
         setupNavigation()
         setupNavDrawer()
+        setupSignInGate()
+        showSignInGate(AuthGatePolicy.requiresSignIn(authManager.getCurrentUser()?.uid))
+        observeQueueState()
+        mainScope.launch {
+            authManager.authState.collect { state ->
+                when (state) {
+                    is AuthState.SignedIn -> if (activeAccountUid != state.uid) {
+                        activateAccount(state.uid)
+                        showSignInGate(false)
+                        syncAccountLibrary()
+                    }
+                    AuthState.SignedOut -> showSignInGate(true)
+                    else -> Unit
+                }
+            }
+        }
 
         // Start & bind PlaybackService
         val serviceIntent = Intent(this, PlaybackService::class.java)
@@ -308,6 +363,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         if (authManager.isUserSignedIn()) {
+            syncAccountLibrary()
             loadTrendingTracks()
         } else {
             featuredCarouselAdapter.updateItems(emptyList())
@@ -316,6 +372,91 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         }
 
         updateProfileView()
+    }
+
+    private fun activateAccount(uid: String?) {
+        if (activeAccountUid == uid && ::favoritesManager.isInitialized) return
+        activeAccountUid = uid
+        accountSyncJob?.cancel()
+        accountSyncJob = null
+        accountSyncUid = null
+        favoritesManager = FavoritesManager.getInstance(this, uid)
+        historyManager = HistoryManager.getInstance(this, uid)
+        playlistManager = PlaylistManager.getInstance(this, uid)
+        recentSearchManager = uid?.let { RecentSearchManager.forUser(this, it) }
+        accountLibrarySync = uid?.let { AccountLibrarySync(this, it) }
+    }
+
+    private fun setupSignInGate() {
+        signInGate = findViewById(R.id.signInGate)
+        signInErrorText = signInGate.findViewById(R.id.signInErrorText)
+        signInProgress = signInGate.findViewById(R.id.signInProgress)
+        btnContinueWithGoogle = signInGate.findViewById(R.id.btnContinueWithGoogle)
+        btnContinueWithGoogle.setOnClickListener {
+            signInErrorText.visibility = View.GONE
+            signInProgress.visibility = View.VISIBLE
+            btnContinueWithGoogle.isEnabled = false
+            runCatching { googleSignInLauncher.launch(authManager.getSignInIntent()) }
+                .onFailure { showSignInError(it.localizedMessage ?: "Google Sign-In could not be opened") }
+        }
+    }
+
+    private fun showSignInGate(required: Boolean) {
+        if (!::signInGate.isInitialized) return
+        signInGate.visibility = if (required) View.VISIBLE else View.GONE
+        if (required) signInGate.bringToFront()
+        signInProgress.visibility = View.GONE
+        btnContinueWithGoogle.isEnabled = true
+    }
+
+    private fun showSignInError(message: String) {
+        if (!::signInErrorText.isInitialized) return
+        signInProgress.visibility = View.GONE
+        btnContinueWithGoogle.isEnabled = true
+        signInErrorText.text = message
+        signInErrorText.visibility = View.VISIBLE
+        showSignInGate(true)
+        signInErrorText.visibility = View.VISIBLE
+    }
+
+    private fun syncAccountLibrary() {
+        val uid = activeAccountUid ?: return
+        val sync = accountLibrarySync ?: return
+        if (accountSyncUid == uid && accountSyncJob?.isActive == true) return
+        accountSyncUid = uid
+        accountSyncJob = mainScope.launch {
+            try {
+                sync.syncInitial(favoritesManager, historyManager, playlistManager, recentSearchManager!!)
+                if (activeAccountUid != uid) return@launch
+                refreshLibraryTab()
+                refreshRecentlyPlayed()
+                updateProfileView()
+                refreshQueueViews()
+            } catch (error: Exception) {
+                Log.w(TAG, "Account library sync failed; local account data was retained: ${error.message}")
+                Toast.makeText(this@MainActivity, "Cloud sync unavailable. Your changes are saved on this device.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun syncAccountOperation(label: String, operation: suspend (AccountLibrarySync) -> Unit) {
+        val uid = activeAccountUid ?: return
+        val sync = accountLibrarySync ?: return
+        mainScope.launch {
+            try {
+                operation(sync)
+            } catch (error: Exception) {
+                if (activeAccountUid == uid) {
+                    Log.w(TAG, "$label sync failed; the local change remains saved: ${error.message}")
+                    Toast.makeText(this@MainActivity, "Saved locally. $label will sync when online.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun syncPlaylist(playlistId: String) {
+        val playlist = playlistManager.getPlaylist(playlistId) ?: return
+        syncAccountOperation("Playlist") { it.putPlaylist(playlist) }
     }
 
     override fun onDestroy() {
@@ -334,6 +475,8 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     private fun bindAllViews() {
         // Tab includes
+        mainContentContainer = findViewById(R.id.mainContentContainer)
+        bottomNavBar = findViewById(R.id.bottomNavBar)
         includeHome = findViewById(R.id.includeHome)
         includeSearch = findViewById(R.id.includeSearch)
         includeLibrary = findViewById(R.id.includeLibrary)
@@ -371,6 +514,10 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
         // Search
         searchTabInput = includeSearch.findViewById(R.id.searchTabInput)
+        recentSearchesSection = includeSearch.findViewById(R.id.recentSearchesSection)
+        recentSearchesContainer = includeSearch.findViewById(R.id.recentSearchesContainer)
+        recentSearchesEmpty = includeSearch.findViewById(R.id.recentSearchesEmpty)
+        btnClearRecentSearches = includeSearch.findViewById(R.id.btnClearRecentSearches)
         btnSearchClear = includeSearch.findViewById(R.id.btnSearchClear)
         searchTagsScroll = includeSearch.findViewById(R.id.searchTagsScroll)
         searchLoadingBar = includeSearch.findViewById(R.id.searchLoadingBar)
@@ -457,7 +604,6 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         fullPlayerContainer = findViewById(R.id.fullPlayerContainer)
         val np = findViewById<View>(R.id.includeNowPlaying) ?: fullPlayerContainer
         btnCollapseNowPlaying = np.findViewById(R.id.btnCollapseNowPlaying)
-        btnNowPlayingQueue = np.findViewById(R.id.btnNowPlayingQueue)
         nowPlayingVinylDisc = np.findViewById(R.id.nowPlayingVinylDisc)
         nowPlayingWaveform = np.findViewById(R.id.nowPlayingWaveform)
         turntableTonearm = np.findViewById(R.id.turntableTonearm)
@@ -472,9 +618,13 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         btnFullPrev = np.findViewById(R.id.btnFullPrev)
         btnFullPlayPause = np.findViewById(R.id.btnFullPlayPause)
         fullPlayPauseIcon = np.findViewById(R.id.fullPlayPauseIcon)
+        trackPreparingIndicator = np.findViewById(R.id.trackPreparingIndicator)
         btnFullNext = np.findViewById(R.id.btnFullNext)
         btnFullRepeat = np.findViewById(R.id.btnFullRepeat)
         fullQualityBadge = np.findViewById(R.id.fullQualityBadge)
+        nowPlayingUpNextRecycler = np.findViewById(R.id.nowPlayingUpNextRecycler)
+        nowPlayingQueueCount = np.findViewById(R.id.nowPlayingQueueCount)
+        nowPlayingQueueEmpty = np.findViewById(R.id.nowPlayingQueueEmpty)
 
         // Queue sheet
         queueSheetContainer = findViewById(R.id.queueSheetContainer)
@@ -507,11 +657,34 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     // ─── Navigation ───────────────────────────────────────────────────────────
 
     private fun selectNavTab(index: Int) {
+        if (index !in 0..3 || index == currentNavTab) return
+        val previousIndex = currentNavTab
         currentNavTab = index
-        includeHome.visibility = if (index == 0) View.VISIBLE else View.GONE
-        includeSearch.visibility = if (index == 1) View.VISIBLE else View.GONE
-        includeLibrary.visibility = if (index == 2) View.VISIBLE else View.GONE
-        includeProfile.visibility = if (index == 3) View.VISIBLE else View.GONE
+        val destinations = listOf(includeHome, includeSearch, includeLibrary, includeProfile)
+        val token = ++navigationTransitionToken
+        val reduceMotion = !android.animation.ValueAnimator.areAnimatorsEnabled()
+        destinations.forEachIndexed { destinationIndex, view ->
+            if (destinationIndex == index) {
+                view.animate().cancel()
+                view.visibility = View.VISIBLE
+                if (reduceMotion || previousIndex < 0) view.alpha = 1f else {
+                    view.alpha = 0f
+                    view.animate().alpha(1f).setDuration(150).start()
+                }
+            } else if (view.visibility == View.VISIBLE && destinationIndex == previousIndex && !reduceMotion) {
+                view.animate().cancel()
+                view.animate().alpha(0f).setDuration(100).withEndAction {
+                    if (token == navigationTransitionToken) {
+                        view.visibility = View.GONE
+                        view.alpha = 1f
+                    }
+                }.start()
+            } else {
+                view.animate().cancel()
+                view.visibility = View.GONE
+                view.alpha = 1f
+            }
+        }
 
         // Tab 0: Home
         pillHomeActive.visibility = if (index == 0) View.VISIBLE else View.GONE
@@ -906,7 +1079,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         val feedItems = if (feedStart < results.size) results.subList(feedStart, results.size) else results
         homeTrackAdapter.updateResults(feedItems)
 
-        val current = queueManager.currentTrack()
+        val current = activeQueueManager().currentTrack()
         featuredCarouselAdapter.updatePlaybackState(current?.videoId, playbackService?.isPlaying == true)
     }
 
@@ -928,15 +1101,14 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             searchCountText.visibility = View.GONE
         }
 
-        var searchJob: Job? = null
         searchTabInput.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                searchJob?.cancel()
+                searchDebounceJob?.cancel()
                 val q = s?.toString()?.trim() ?: ""
                 btnSearchClear.visibility = if (q.isNotEmpty()) View.VISIBLE else View.GONE
                 if (q.isNotBlank()) {
-                    searchJob = mainScope.launch {
+                    searchDebounceJob = mainScope.launch {
                         delay(550)
                         performSearch(q)
                     }
@@ -944,6 +1116,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                     searchTabResultsList.visibility = View.GONE
                     searchEmptyState.visibility = View.VISIBLE
                     searchCountText.visibility = View.GONE
+                    renderRecentSearches()
                 }
             }
             override fun afterTextChanged(s: android.text.Editable?) {}
@@ -954,6 +1127,8 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
             imm?.hideSoftInputFromWindow(searchTabInput.windowToken, 0)
             if (q.isNotBlank()) {
+                searchDebounceJob?.cancel()
+                recordRecentSearch(q)
                 performSearch(q)
             }
             true
@@ -962,7 +1137,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         // Quick Search Chips
         fun wireSearchChip(id: Int, query: String) {
             includeSearch.findViewById<View>(id).setOnClickListener {
+                searchDebounceJob?.cancel()
                 searchTabInput.setText(query)
+                recordRecentSearch(query)
                 performSearch(query)
             }
         }
@@ -971,6 +1148,54 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         wireSearchChip(R.id.chipBollywood, "Top Bollywood hits")
         wireSearchChip(R.id.chipEdmEnergy, "EDM workout energy")
         wireSearchChip(R.id.chipAcoustic, "Acoustic coffee morning")
+        searchTabInput.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus && searchTabInput.text.isNullOrBlank()) renderRecentSearches()
+        }
+        btnClearRecentSearches.setOnClickListener {
+            val items = recentSearchManager?.getRecent().orEmpty()
+            recentSearchManager?.clear()
+            renderRecentSearches()
+            syncAccountOperation("Recent searches") { it.clearRecentSearches(items) }
+        }
+        renderRecentSearches()
+    }
+
+    private fun recordRecentSearch(query: String) {
+        val manager = recentSearchManager ?: return
+        manager.record(query)
+        renderRecentSearches()
+        syncAccountOperation("Recent searches") { it.syncRecentSearches(manager.getRecent()) }
+    }
+
+    private fun renderRecentSearches() {
+        if (!::recentSearchesContainer.isInitialized) return
+        recentSearchesContainer.removeAllViews()
+        val items = recentSearchManager?.getRecent().orEmpty().take(5)
+        val showSection = searchTabInput.text.isNullOrBlank()
+        recentSearchesSection.visibility = if (showSection) View.VISIBLE else View.GONE
+        btnClearRecentSearches.visibility = if (items.isNotEmpty()) View.VISIBLE else View.GONE
+        recentSearchesEmpty.visibility = if (showSection && items.isEmpty()) View.VISIBLE else View.GONE
+        items.forEach { recent ->
+            val row = TextView(this).apply {
+                text = recent.query
+                setTextColor(getColor(R.color.text_muted))
+                textSize = 14f
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(this@MainActivity, R.font.manrope)
+                setPadding(12, 10, 12, 10)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    searchDebounceJob?.cancel()
+                    searchTabInput.setText(recent.query)
+                    searchTabInput.setSelection(searchTabInput.text.length)
+                    recordRecentSearch(recent.query)
+                    performSearch(recent.query)
+                }
+            }
+            recentSearchesContainer.addView(row, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
     }
 
     private fun performSearch(query: String) {
@@ -1053,11 +1278,13 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 when (currentLibraryTab) {
                     1 -> {
                         favoritesManager.removeFavorite(track.videoId)
+                        syncAccountOperation("Favorites") { it.removeFavorite(track) }
                         refreshLibraryTab()
                         updateLikeButtonState(playbackService?.queueManager?.currentTrack() ?: queueManager.currentTrack())
                     }
                     2 -> {
                         historyManager.removeEntry(track.videoId)
+                        syncAccountOperation("Listening history") { it.removeHistory(track) }
                         refreshLibraryTab()
                     }
                     3 -> {
@@ -1100,7 +1327,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                         .setTitle("Clear Favorites")
                         .setMessage("Are you sure you want to remove all liked songs?")
                         .setPositiveButton("Clear") { _, _ ->
+                            val toRemove = favoritesManager.getFavorites()
                             favoritesManager.clearFavorites()
+                            syncAccountOperation("Favorites") { it.clearFavorites(toRemove) }
                             refreshLibraryTab()
                             updateProfileView()
                             updateLikeButtonState(playbackService?.queueManager?.currentTrack() ?: queueManager.currentTrack())
@@ -1113,7 +1342,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                         .setTitle("Clear Listening History")
                         .setMessage("Are you sure you want to clear your listening history?")
                         .setPositiveButton("Clear") { _, _ ->
+                            val toRemove = historyManager.getHistory().map { it.track }
                             historyManager.clearHistory()
+                            syncAccountOperation("Listening history") { it.clearHistory(toRemove) }
                             refreshLibraryTab()
                             updateProfileView()
                         }
@@ -1198,7 +1429,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                     libraryEmptyState.visibility = View.GONE
                     libraryRecyclerView.visibility = View.VISIBLE
                     libraryTrackAdapter.setTracks(favorites)
-                    val currentId = playbackService?.queueManager?.currentTrack()?.videoId ?: queueManager.currentTrack()?.videoId
+                    val currentId = activeQueueManager().currentTrack()?.videoId
                     libraryTrackAdapter.setCurrentPlayingId(currentId)
                 }
             }
@@ -1221,7 +1452,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                     libraryEmptyState.visibility = View.GONE
                     libraryRecyclerView.visibility = View.VISIBLE
                     libraryTrackAdapter.setTracks(history)
-                    val currentId = playbackService?.queueManager?.currentTrack()?.videoId ?: queueManager.currentTrack()?.videoId
+                    val currentId = activeQueueManager().currentTrack()?.videoId
                     libraryTrackAdapter.setCurrentPlayingId(currentId)
                 }
             }
@@ -1229,7 +1460,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 btnNewPlaylistHeader.visibility = View.GONE
                 libraryRecyclerView.layoutManager = LinearLayoutManager(this)
                 libraryRecyclerView.adapter = libraryTrackAdapter
-                val queue = playbackService?.queueManager?.queue?.value ?: queueManager.queue.value ?: emptyList()
+                val queue = activeQueueManager().queue.value.orEmpty()
                 btnLibraryAction.visibility = if (queue.isNotEmpty()) View.VISIBLE else View.GONE
                 libraryCountLabel.text = "${queue.size} Tracks in Playback Queue"
                 if (queue.isEmpty()) {
@@ -1243,7 +1474,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                     libraryEmptyState.visibility = View.GONE
                     libraryRecyclerView.visibility = View.VISIBLE
                     libraryTrackAdapter.setTracks(queue)
-                    val currentId = playbackService?.queueManager?.currentTrack()?.videoId ?: queueManager.currentTrack()?.videoId
+                    val currentId = activeQueueManager().currentTrack()?.videoId
                     libraryTrackAdapter.setCurrentPlayingId(currentId)
                 }
             }
@@ -1267,10 +1498,12 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                     .setTitle("Sign Out")
                     .setMessage("Are you sure you want to sign out of LumiOne$emailText?")
                     .setPositiveButton("Sign Out") { _, _ ->
+                        showSignInGate(true)
                         authManager.signOut {
                             Toast.makeText(this, "Signed out of LumiOne", Toast.LENGTH_SHORT).show()
+                            activateAccount(null)
+                            showSignInGate(true)
                             updateProfileView()
-                            loadTrendingTracks()
                         }
                     }
                     .setNegativeButton("Cancel", null)
@@ -1379,7 +1612,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 .setTitle("Clear Listening History")
                 .setMessage("Are you sure you want to clear your listening history? This will remove all your recently played tracks from this device. Your liked songs will not be affected.")
                 .setPositiveButton("Clear History") { _, _ ->
+                    val toRemove = historyManager.getHistory().map { it.track }
                     historyManager.clearHistory()
+                    syncAccountOperation("Listening history") { it.clearHistory(toRemove) }
                     Toast.makeText(this, "Listening history cleared", Toast.LENGTH_SHORT).show()
                     updateProfileView()
                     refreshRecentlyPlayed()
@@ -1395,7 +1630,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 .setTitle("Clear Liked Songs")
                 .setMessage("Are you sure you want to clear all liked songs? This will remove all tracks from your favorites collection. Your listening history will not be affected.")
                 .setPositiveButton("Clear Liked Songs") { _, _ ->
+                    val toRemove = favoritesManager.getFavorites()
                     favoritesManager.clearFavorites()
+                    syncAccountOperation("Favorites") { it.clearFavorites(toRemove) }
                     Toast.makeText(this, "Liked songs cleared", Toast.LENGTH_SHORT).show()
                     updateProfileView()
                     updateLikeButtonState(playbackService?.queueManager?.currentTrack() ?: queueManager.currentTrack())
@@ -1490,7 +1727,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         val playlistCount = playlists.size
         val favCount = favoritesManager.getFavorites().size
         val histCount = historyManager.getHistory().size
-        val qCount = queueManager.queue.value?.size ?: 0
+        val qCount = activeQueueManager().queue.value?.size ?: 0
 
         if (::statPlaylistsCount.isInitialized) {
             statPlaylistsCount.text = playlistCount.toString()
@@ -1600,9 +1837,34 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private fun setupNowPlayingScreen() {
         btnCollapseNowPlaying.setOnClickListener { hideFullPlayer() }
 
-        btnNowPlayingQueue.setOnClickListener {
-            showQueueSheet()
+        nowPlayingUpNextRecycler.layoutManager = LinearLayoutManager(this)
+        nowPlayingUpNextRecycler.isNestedScrollingEnabled = false
+        nowPlayingUpNextRecycler.adapter = QueueTrackAdapter(
+            onTrackClick = { _, position ->
+                val manager = playbackService?.queueManager ?: queueManager
+                val targetIndex = (manager.currentIndex.value ?: -1) + 1 + position
+                manager.jumpTo(targetIndex)?.let { playTrack(it) }
+            },
+            onRemoveClick = { _, position ->
+                val serviceManager = playbackService?.queueManager
+                val manager = serviceManager ?: queueManager
+                val targetIndex = (manager.currentIndex.value ?: -1) + 1 + position
+                manager.removeAt(targetIndex)
+                if (serviceManager != null) queueManager.removeAt(targetIndex)
+                refreshQueueViews()
+            },
+            onStartDrag = { holder -> queueDragHelper.startDrag(holder) }
+        ).also { nowPlayingQueueAdapter = it }
+
+        queueDragHelper.attachToRecyclerView(nowPlayingUpNextRecycler)
+
+        turntableTonearm.post {
+            if (turntableTonearm.width > 0) {
+                turntableTonearm.pivotX = turntableTonearm.width * (44f / 60f)
+                turntableTonearm.pivotY = turntableTonearm.height * (16f / 120f)
+            }
         }
+        turntableTonearm.rotation = -25f
 
         btnNowPlayingAddToPlaylist.setOnClickListener {
             triggerHaptic(it)
@@ -1618,6 +1880,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             val track = playbackService?.queueManager?.currentTrack() ?: queueManager.currentTrack()
             if (track != null) {
                 val isFav = favoritesManager.toggleFavorite(track)
+                syncAccountOperation("Favorites") { if (isFav) it.putFavorite(track) else it.removeFavorite(track) }
                 btnNowPlayingLike.animate().scaleX(1.35f).scaleY(1.35f).setDuration(120).withEndAction {
                     btnNowPlayingLike.animate().scaleX(1.0f).scaleY(1.0f).setDuration(120).start()
                 }.start()
@@ -1689,17 +1952,33 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     private fun showFullPlayer() {
+        mainContentContainer.visibility = View.GONE
+        bottomNavBar.visibility = View.GONE
+        miniPlayerCard.visibility = View.GONE
+        miniProgressBar.visibility = View.GONE
         fullPlayerContainer.visibility = View.VISIBLE
         fullPlayerContainer.bringToFront()
         val isPlaying = playbackService?.isPlaying == true
-        nowPlayingVinylDisc.setPlaying(isPlaying)
+        val activePlaying = isPlaying && !trackPreparing
+        nowPlayingVinylDisc.setPlaying(activePlaying)
+        setTonearmPlaying(activePlaying)
         if (::nowPlayingWaveform.isInitialized) {
-            nowPlayingWaveform.setPlaying(isPlaying)
+            nowPlayingWaveform.setPlaying(activePlaying)
+        }
+        if (::trackPreparingIndicator.isInitialized && ::fullPlayPauseIcon.isInitialized) {
+            trackPreparingIndicator.visibility = if (trackPreparing) View.VISIBLE else View.GONE
+            fullPlayPauseIcon.visibility = if (trackPreparing) View.INVISIBLE else View.VISIBLE
         }
     }
 
     private fun hideFullPlayer() {
         fullPlayerContainer.visibility = View.GONE
+        mainContentContainer.visibility = View.VISIBLE
+        bottomNavBar.visibility = View.VISIBLE
+        if (playbackService?.queueManager?.currentTrack() != null) {
+            miniPlayerCard.visibility = View.VISIBLE
+            miniProgressBar.visibility = View.VISIBLE
+        }
     }
 
     // ─── Queue Sheet ──────────────────────────────────────────────────────────
@@ -1718,8 +1997,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 val s = playbackService
                 s?.queueManager?.removeAt(position)
                 queueManager.removeAt(position)
-                refreshQueueSheet()
-                if (currentNavTab == 2 && currentLibraryTab == 2) refreshLibraryTab()
+                refreshQueueViews()
             }
         )
         queueSheetRecycler.layoutManager = LinearLayoutManager(this)
@@ -1734,8 +2012,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 .setPositiveButton("Clear") { _, _ ->
                     playbackService?.queueManager?.clearQueue()
                     queueManager.clearQueue()
-                    refreshQueueSheet()
-                    if (currentNavTab == 2 && currentLibraryTab == 2) refreshLibraryTab()
+                    refreshQueueViews()
                 }
                 .setNegativeButton("Cancel", null)
                 .show()
@@ -1753,8 +2030,8 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     private fun refreshQueueSheet() {
-        val queue = playbackService?.queueManager?.queue?.value ?: queueManager.queue.value ?: emptyList()
-        val currentId = playbackService?.queueManager?.currentTrack()?.videoId ?: queueManager.currentTrack()?.videoId
+        val queue = activeQueueManager().queue.value.orEmpty()
+        val currentId = activeQueueManager().currentTrack()?.videoId
 
         queueSubtitle.text = "${queue.size} tracks in queue"
         if (queue.isEmpty()) {
@@ -1768,6 +2045,61 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             queueSheetAdapter.setTracks(queue)
             queueSheetAdapter.setCurrentPlayingId(currentId)
         }
+    }
+
+    private lateinit var nowPlayingQueueAdapter: QueueTrackAdapter
+
+    private val queueDragHelper by lazy {
+        ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN,
+            0
+        ) {
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                val from = viewHolder.bindingAdapterPosition
+                val to = target.bindingAdapterPosition
+                if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION) return false
+                val serviceManager = playbackService?.queueManager
+                val changed = (serviceManager ?: queueManager).moveUpcoming(from, to)
+                if (changed && serviceManager != null) queueManager.moveUpcoming(from, to)
+                if (changed && ::nowPlayingQueueAdapter.isInitialized) {
+                    nowPlayingQueueAdapter.moveItem(from, to)
+                }
+                return changed
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) = Unit
+
+            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                super.clearView(recyclerView, viewHolder)
+                refreshQueueViews()
+            }
+        })
+    }
+
+    private fun observeQueueState() {
+        queueManager.queue.observe(this) { refreshQueueViews() }
+        playbackService?.queueManager?.queue?.observe(this) { refreshQueueViews() }
+    }
+
+    private fun activeQueueManager() = playbackService?.queueManager ?: queueManager
+
+    private fun refreshQueueViews() {
+        if (!::queueSheetAdapter.isInitialized) return
+        refreshQueueSheet()
+        if (!::nowPlayingQueueAdapter.isInitialized) return
+        val manager = playbackService?.queueManager ?: queueManager
+        val currentId = manager.currentTrack()?.videoId
+        val upcoming = manager.upcomingTracks()
+        nowPlayingQueueCount.text = if (upcoming.size == 1) "1 track" else "${upcoming.size} tracks"
+        nowPlayingQueueEmpty.visibility = if (upcoming.isEmpty()) View.VISIBLE else View.GONE
+        nowPlayingUpNextRecycler.visibility = if (upcoming.isEmpty()) View.GONE else View.VISIBLE
+        nowPlayingQueueAdapter.setTracks(upcoming)
+        nowPlayingQueueAdapter.setCurrentPlayingId(currentId)
+        if (currentNavTab == 2 && currentLibraryTab == 3) refreshLibraryTab()
     }
 
     // ─── Playlist Detail & Management ─────────────────────────────────────────
@@ -1786,6 +2118,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 if (playlist != null) {
                     val removed = playlistManager.removeTrackFromPlaylist(playlist.id, track.videoId)
                     if (removed) {
+                        syncPlaylist(playlist.id)
                         Toast.makeText(this, "Removed from \"${playlist.name}\"", Toast.LENGTH_SHORT).show()
                         val updated = playlistManager.getPlaylist(playlist.id)
                         if (updated != null) {
@@ -1946,6 +2279,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             if (initialTrack != null) {
                 playlistManager.addTrackToPlaylist(playlist.id, initialTrack)
             }
+            syncPlaylist(playlist.id)
 
             Toast.makeText(this, "Playlist \"$name\" created", Toast.LENGTH_SHORT).show()
             updateProfileView()
@@ -2030,6 +2364,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             rvDialog.adapter = DialogPlaylistAdapter(playlists) { selectedPlaylist ->
                 val added = playlistManager.addTrackToPlaylist(selectedPlaylist.id, track)
                 if (added) {
+                    syncPlaylist(selectedPlaylist.id)
                     Toast.makeText(this, "Added to ${selectedPlaylist.name}", Toast.LENGTH_SHORT).show()
                     if (currentDetailPlaylist?.id == selectedPlaylist.id) {
                         val updated = playlistManager.getPlaylist(selectedPlaylist.id)
@@ -2077,6 +2412,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 val newName = input.text.toString().trim()
                 if (newName.isNotBlank()) {
                     playlistManager.renamePlaylist(playlist.id, newName)
+                    syncPlaylist(playlist.id)
                     val updated = playlistManager.getPlaylist(playlist.id)
                     if (updated != null) updatePlaylistDetailView(updated)
                     Toast.makeText(this, "Playlist renamed to \"$newName\"", Toast.LENGTH_SHORT).show()
@@ -2096,6 +2432,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             .setMessage("Are you sure you want to delete \"${playlist.name}\"?\n\nYour liked songs and listening history will not be affected.")
             .setPositiveButton("Delete") { _, _ ->
                 playlistManager.deletePlaylist(playlist.id)
+                syncAccountOperation("Playlist") { it.removePlaylist(playlist.id) }
                 Toast.makeText(this, "Deleted \"${playlist.name}\"", Toast.LENGTH_SHORT).show()
                 hidePlaylistDetail()
                 updateProfileView()
@@ -2130,6 +2467,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 val trackToAdd = availableTracks[which]
                 val added = playlistManager.addTrackToPlaylist(playlist.id, trackToAdd)
                 if (added) {
+                    syncPlaylist(playlist.id)
                     Toast.makeText(this, "Added \"${trackToAdd.title}\"", Toast.LENGTH_SHORT).show()
                     val updated = playlistManager.getPlaylist(playlist.id)
                     if (updated != null) updatePlaylistDetailView(updated)
@@ -2337,6 +2675,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     private fun playTrack(track: Track) {
+        setTrackPreparing(true)
         updateTrackUI(track)
         homeTrackAdapter.setCurrentPlayingTrackId(track.videoId)
         searchTrackAdapter.setCurrentPlayingTrackId(track.videoId)
@@ -2345,8 +2684,6 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         updatePlayPauseIcons(false)
         playbackService?.loadAndPlay(track)
 
-        // Record in Listening History
-        historyManager.recordTrack(track)
         updateLikeButtonState(track)
     }
 
@@ -2396,16 +2733,19 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     override fun onTrackChanged(track: Track?) {
         runOnUiThread {
             if (track != null) {
+                if (playbackService?.isPlaying != true) {
+                    setTrackPreparing(true)
+                }
                 updateTrackUI(track)
                 homeTrackAdapter.setCurrentPlayingTrackId(track.videoId)
                 searchTrackAdapter.setCurrentPlayingTrackId(track.videoId)
                 libraryTrackAdapter.setCurrentPlayingId(track.videoId)
                 queueSheetAdapter.setCurrentPlayingId(track.videoId)
-                historyManager.recordTrack(track)
                 updateLikeButtonState(track)
                 if (currentNavTab == 2) refreshLibraryTab()
 
-                refreshQueueSheet()
+                refreshQueueViews()
+                if (playbackHistoryRecorder.onPlaybackUpdate(track, playbackService?.isPlaying == true)) recordPlaybackStart(track)
                 checkAutoplayReplenishment(track)
             }
         }
@@ -2413,18 +2753,42 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     override fun onPlayStateChanged(playing: Boolean) {
         runOnUiThread {
+            if (playing) {
+                setTrackPreparing(false)
+            }
             updatePlayPauseIcons(playing)
+            val current = playbackService?.queueManager?.currentTrack() ?: queueManager.currentTrack()
+            if (playbackHistoryRecorder.onPlaybackUpdate(current, playing) && current != null) recordPlaybackStart(current)
         }
+    }
+
+    private fun recordPlaybackStart(track: Track) {
+        if (!playbackHistoryRecorder.onPlaybackUpdate(track, true)) return
+        historyManager.recordTrack(track)
+        historyManager.getHistory().firstOrNull { it.track.videoId == track.videoId }?.let { entry ->
+            syncAccountOperation("Listening history") {
+                it.putHistory(entry)
+                it.pruneHistoryTo(historyManager.getHistory())
+            }
+        }
+        refreshRecentlyPlayed()
+        if (currentNavTab == 2 && currentLibraryTab == 2) refreshLibraryTab()
     }
 
     override fun onTrackCompleted(track: Track) {
         historyManager.recordCompletion(track.videoId)
+        historyManager.getHistory().firstOrNull { it.track.videoId == track.videoId }?.let { entry ->
+            syncAccountOperation("Listening history") { it.putHistory(entry) }
+        }
     }
 
     override fun onTrackSkipped(track: Track, playedMs: Long) {
         val duration = if (track.durationMs > 0) track.durationMs else 180000L
         if (playedMs < 25000L || playedMs < (duration * 0.20)) {
             historyManager.recordSkip(track.videoId)
+            historyManager.getHistory().firstOrNull { it.track.videoId == track.videoId }?.let { entry ->
+                syncAccountOperation("Listening history") { it.putHistory(entry) }
+            }
         }
     }
 
@@ -2454,12 +2818,15 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     override fun onPlayerReady() {
         runOnUiThread {
+            setTrackPreparing(false)
             updatePlayPauseIcons(true)
         }
     }
 
     override fun onError(code: Int) {
         runOnUiThread {
+            setTrackPreparing(false)
+            updatePlayPauseIcons(false)
             if (code != 0) {
                 Toast.makeText(this, "Playback error (code: $code)", Toast.LENGTH_SHORT).show()
             }
@@ -2468,6 +2835,8 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     override fun onStreamUnavailable(track: Track, reason: String) {
         runOnUiThread {
+            setTrackPreparing(false)
+            updatePlayPauseIcons(false)
             Toast.makeText(this, reason, Toast.LENGTH_LONG).show()
         }
     }
@@ -2497,11 +2866,11 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
             nowPlayingVinylDisc.resetRotation()
             nowPlayingVinylDisc.loadArtworkUrl(track.thumbnailUrl)
-            nowPlayingVinylDisc.setPlaying(playbackService?.isPlaying == true)
+            nowPlayingVinylDisc.setPlaying(playbackService?.isPlaying == true && !trackPreparing)
         } else {
             nowPlayingVinylDisc.resetRotation()
             nowPlayingVinylDisc.setArtworkBitmap(null)
-            nowPlayingVinylDisc.setPlaying(playbackService?.isPlaying == true)
+            nowPlayingVinylDisc.setPlaying(playbackService?.isPlaying == true && !trackPreparing)
         }
 
         updateLikeButtonState(track)
@@ -2515,7 +2884,39 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
         val current = queueManager.currentTrack()
         featuredCarouselAdapter.updatePlaybackState(current?.videoId, playing)
-        updateVinylRotation(playing)
+        val activePlaying = playing && !trackPreparing
+        updateVinylRotation(activePlaying)
+        setTonearmPlaying(activePlaying)
+    }
+
+    private fun setTrackPreparing(preparing: Boolean) {
+        trackPreparing = preparing
+        if (::trackPreparingIndicator.isInitialized && ::fullPlayPauseIcon.isInitialized) {
+            trackPreparingIndicator.visibility = if (preparing) View.VISIBLE else View.GONE
+            fullPlayPauseIcon.visibility = if (preparing) View.INVISIBLE else View.VISIBLE
+        }
+        val isPlaying = playbackService?.isPlaying == true
+        val activePlaying = isPlaying && !preparing
+        updateVinylRotation(activePlaying)
+        setTonearmPlaying(activePlaying)
+    }
+
+    private fun setTonearmPlaying(playing: Boolean) {
+        if (!::turntableTonearm.isInitialized) return
+        val targetRotation = if (playing) 0f else -25f
+        if (tonearmPlaying == playing && turntableTonearm.rotation == targetRotation) return
+        tonearmPlaying = playing
+        if (turntableTonearm.width > 0) {
+            turntableTonearm.pivotX = turntableTonearm.width * (44f / 60f)
+            turntableTonearm.pivotY = turntableTonearm.height * (16f / 120f)
+        }
+        tonearmAnimator?.cancel()
+        val animator = ObjectAnimator.ofFloat(turntableTonearm, View.ROTATION, turntableTonearm.rotation, targetRotation).apply {
+            duration = 320L
+            interpolator = DecelerateInterpolator()
+        }
+        tonearmAnimator = animator
+        animator.start()
     }
 
     private fun updateVinylRotation(playing: Boolean) {
@@ -2528,6 +2929,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     override fun onStop() {
         super.onStop()
         nowPlayingVinylDisc.setPlaying(false)
+        setTonearmPlaying(false)
         if (::nowPlayingWaveform.isInitialized) {
             nowPlayingWaveform.setPlaying(false)
         }
@@ -2535,8 +2937,11 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     override fun onResume() {
         super.onResume()
-        if (playbackService?.isPlaying == true) {
+        val isPlaying = playbackService?.isPlaying == true
+        val activePlaying = isPlaying && !trackPreparing
+        if (activePlaying) {
             nowPlayingVinylDisc.setPlaying(true)
+            setTonearmPlaying(true)
             if (::nowPlayingWaveform.isInitialized) {
                 nowPlayingWaveform.setPlaying(true)
             }
@@ -2552,7 +2957,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     override fun onBackPressed() {
-        if (::navDrawerContainer.isInitialized && navDrawerContainer.visibility == View.VISIBLE) {
+        if (!authManager.isUserSignedIn()) {
+            return
+        } else if (::navDrawerContainer.isInitialized && navDrawerContainer.visibility == View.VISIBLE) {
             hideNavDrawer()
         } else if (::playlistDetailContainer.isInitialized && playlistDetailContainer.visibility == View.VISIBLE) {
             hidePlaylistDetail()

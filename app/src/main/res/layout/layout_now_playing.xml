@@ -9,6 +9,7 @@
     android:focusable="true">
 
     <ScrollView
+        android:id="@+id/nowPlayingScroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:fillViewport="true"
@@ -16,7 +17,7 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingHorizontal="24dp"
             android:paddingTop="36dp"
@@ -50,16 +51,6 @@
                     android:letterSpacing="0.16"
                     android:fontFamily="@font/plus_jakarta_sans" />
 
-                <ImageButton
-                    android:id="@+id/btnNowPlayingQueue"
-                    android:layout_width="42dp"
-                    android:layout_height="42dp"
-                    android:layout_alignParentEnd="true"
-                    android:layout_centerVertical="true"
-                    android:background="@drawable/bg_icon_button"
-                    android:src="@drawable/ic_queue"
-                    android:tint="@color/text_primary"
-                    android:contentDescription="Queue" />
             </RelativeLayout>
 
             <!-- Flexible Space -->
@@ -291,6 +282,16 @@
                         android:src="@drawable/ic_play"
                         android:tint="@color/text_on_cyan"
                         android:contentDescription="Play/Pause" />
+
+                    <ProgressBar
+                        android:id="@+id/trackPreparingIndicator"
+                        style="?android:attr/progressBarStyleSmall"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_gravity="center"
+                        android:indeterminate="true"
+                        android:indeterminateTint="@color/primary_cyan"
+                        android:visibility="gone" />
                 </FrameLayout>
 
                 <Space
@@ -350,6 +351,61 @@
                     android:textSize="11sp"
                     android:textStyle="bold"
                     android:fontFamily="@font/plus_jakarta_sans" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/nowPlayingUpNextSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="10dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Up Next"
+                        android:textColor="@color/text_primary"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:fontFamily="@font/plus_jakarta_sans" />
+
+                    <TextView
+                        android:id="@+id/nowPlayingQueueCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 tracks"
+                        android:textColor="@color/text_dim"
+                        android:textSize="12sp"
+                        android:fontFamily="@font/manrope" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/nowPlayingQueueEmpty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_track_item_normal"
+                    android:gravity="center"
+                    android:padding="24dp"
+                    android:text="No upcoming tracks"
+                    android:textColor="@color/text_dim"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/nowPlayingUpNextRecycler"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:clipToPadding="false"
+                    android:overScrollMode="never" />
             </LinearLayout>
 
         </LinearLayout>

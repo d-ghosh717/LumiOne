@@ -6,6 +6,7 @@ import com.lumione.player.queue.Track
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 data class Playlist(
     val id: String,
@@ -34,12 +35,13 @@ class PlaylistManager(private val prefs: SharedPreferences) {
         private const val PREFS_NAME = "lumione_playlist_store"
         private const val KEY_PLAYLISTS = "user_playlists"
 
-        @Volatile
-        private var instance: PlaylistManager? = null
+        private val instances = ConcurrentHashMap<String, PlaylistManager>()
 
-        fun getInstance(context: Context): PlaylistManager {
-            return instance ?: synchronized(this) {
-                instance ?: PlaylistManager(context).also { instance = it }
+        fun getInstance(context: Context, uid: String? = null): PlaylistManager {
+            val key = uid ?: "legacy"
+            val prefsName = if (uid == null) PREFS_NAME else "${PREFS_NAME}_${uid.replace(Regex("[^A-Za-z0-9_-]"), "_")}"
+            return instances.getOrPut(key) {
+                PlaylistManager(context.applicationContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE))
             }
         }
     }
@@ -85,6 +87,16 @@ class PlaylistManager(private val prefs: SharedPreferences) {
             e.printStackTrace()
         }
         return list
+    }
+
+    @Synchronized
+    fun mergePlaylists(incoming: List<Playlist>) {
+        val merged = LinkedHashMap<String, Playlist>()
+        (getPlaylists() + incoming).forEach { playlist ->
+            val existing = merged[playlist.id]
+            if (existing == null || playlist.updatedAt > existing.updatedAt) merged[playlist.id] = playlist
+        }
+        savePlaylists(merged.values.sortedByDescending { it.updatedAt })
     }
 
     @Synchronized

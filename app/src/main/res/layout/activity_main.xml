@@ -449,4 +449,11 @@
             android:layout_height="match_parent" />
     </FrameLayout>
 
+    <include
+        android:id="@+id/signInGate"
+        layout="@layout/layout_sign_in_gate"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
 </RelativeLayout>

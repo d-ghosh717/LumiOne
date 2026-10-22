@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.lumione.player.queue.Track
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 class FavoritesManager(private val prefs: SharedPreferences) {
 
@@ -16,12 +17,13 @@ class FavoritesManager(private val prefs: SharedPreferences) {
         private const val PREFS_NAME = "lumione_favorites_store"
         private const val KEY_FAVORITES = "favorite_tracks"
 
-        @Volatile
-        private var instance: FavoritesManager? = null
+        private val instances = ConcurrentHashMap<String, FavoritesManager>()
 
-        fun getInstance(context: Context): FavoritesManager {
-            return instance ?: synchronized(this) {
-                instance ?: FavoritesManager(context).also { instance = it }
+        fun getInstance(context: Context, uid: String? = null): FavoritesManager {
+            val key = uid ?: "legacy"
+            val prefsName = if (uid == null) PREFS_NAME else "${PREFS_NAME}_${uid.replace(Regex("[^A-Za-z0-9_-]"), "_")}"
+            return instances.getOrPut(key) {
+                FavoritesManager(context.applicationContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE))
             }
         }
     }
@@ -56,6 +58,16 @@ class FavoritesManager(private val prefs: SharedPreferences) {
             favorites.add(0, track)
             saveFavorites(favorites)
         }
+    }
+
+    @Synchronized
+    fun mergeFavorites(incoming: List<Track>) {
+        val merged = LinkedHashMap<String, Track>()
+        (getFavorites() + incoming).forEach { track ->
+            val key = track.provider + ":" + (track.providerId.ifBlank { track.videoId })
+            if (track.videoId.isNotBlank()) merged.putIfAbsent(key, track)
+        }
+        saveFavorites(merged.values.toList())
     }
 
     @Synchronized

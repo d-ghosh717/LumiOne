@@ -122,6 +122,22 @@ class HistoryAndFavoritesTest {
     }
 
     @Test
+    fun testRecordHistoryPersistenceAcrossRestarts() {
+        historyManager.recordTrack(track1)
+        historyManager.recordTrack(track2)
+        historyManager.recordTrack(track1) // repeated play of track1
+
+        // Recreate HistoryManager with the same prefs (simulates restart)
+        val restartedHistoryManager = HistoryManager(fakePrefsHistory)
+        val history = restartedHistoryManager.getHistory()
+        assertEquals(2, history.size)
+        assertEquals("v1", history[0].track.videoId)
+        assertEquals(2, history[0].playCount) // 2 plays
+        assertEquals("v2", history[1].track.videoId)
+        assertEquals(1, history[1].playCount)
+    }
+
+    @Test
     fun testFavoritesManagement() {
         assertFalse(favoritesManager.isFavorite("v1"))
 

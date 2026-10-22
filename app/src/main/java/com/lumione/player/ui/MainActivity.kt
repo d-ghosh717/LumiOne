@@ -383,7 +383,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         favoritesManager = FavoritesManager.getInstance(this, uid)
         historyManager = HistoryManager.getInstance(this, uid)
         playlistManager = PlaylistManager.getInstance(this, uid)
-        recentSearchManager = uid?.let { RecentSearchManager.forUser(this, it) }
+        recentSearchManager = RecentSearchManager.forUser(this, uid ?: "local")
         accountLibrarySync = uid?.let { AccountLibrarySync(this, it) }
     }
 
@@ -426,10 +426,13 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         accountSyncUid = uid
         accountSyncJob = mainScope.launch {
             try {
-                sync.syncInitial(favoritesManager, historyManager, playlistManager, recentSearchManager!!)
+                recentSearchManager?.let { rsm ->
+                    sync.syncInitial(favoritesManager, historyManager, playlistManager, rsm)
+                }
                 if (activeAccountUid != uid) return@launch
                 refreshLibraryTab()
                 refreshRecentlyPlayed()
+                renderRecentSearches()
                 updateProfileView()
                 refreshQueueViews()
             } catch (error: Exception) {
@@ -713,6 +716,8 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
         if (index == 0) {
             refreshRecentlyPlayed()
+        } else if (index == 1) {
+            renderRecentSearches()
         } else if (index == 2) {
             refreshLibraryTab()
         } else if (index == 3) {
@@ -1088,6 +1093,10 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private fun setupSearchScreen() {
         searchTrackAdapter = TrackAdapter(mutableListOf()) { result, _ ->
             val track = result.toTrack()
+            val currentQuery = searchTabInput.text?.toString()?.trim().orEmpty()
+            if (currentQuery.isNotBlank()) {
+                recordRecentSearch(currentQuery)
+            }
             playSingleSongWithRadio(track)
         }
         searchTabResultsList.layoutManager = LinearLayoutManager(this)
@@ -2675,6 +2684,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     private fun playTrack(track: Track) {
+        playbackHistoryRecorder.resetForNewTrack(track.videoId)
         setTrackPreparing(true)
         updateTrackUI(track)
         homeTrackAdapter.setCurrentPlayingTrackId(track.videoId)
@@ -2733,6 +2743,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     override fun onTrackChanged(track: Track?) {
         runOnUiThread {
             if (track != null) {
+                playbackHistoryRecorder.resetForNewTrack(track.videoId)
                 if (playbackService?.isPlaying != true) {
                     setTrackPreparing(true)
                 }
@@ -2745,7 +2756,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 if (currentNavTab == 2) refreshLibraryTab()
 
                 refreshQueueViews()
-                if (playbackHistoryRecorder.onPlaybackUpdate(track, playbackService?.isPlaying == true)) recordPlaybackStart(track)
+                checkAndRecordPlayback(track)
                 checkAutoplayReplenishment(track)
             }
         }
@@ -2757,13 +2768,22 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 setTrackPreparing(false)
             }
             updatePlayPauseIcons(playing)
-            val current = playbackService?.queueManager?.currentTrack() ?: queueManager.currentTrack()
-            if (playbackHistoryRecorder.onPlaybackUpdate(current, playing) && current != null) recordPlaybackStart(current)
+            if (playing) {
+                val current = playbackService?.queueManager?.currentTrack() ?: queueManager.currentTrack()
+                checkAndRecordPlayback(current)
+            }
+        }
+    }
+
+    private fun checkAndRecordPlayback(track: Track?) {
+        val t = track ?: playbackService?.queueManager?.currentTrack() ?: queueManager.currentTrack() ?: return
+        val isPlaying = playbackService?.isPlaying == true
+        if (playbackHistoryRecorder.onPlaybackUpdate(t, isPlaying)) {
+            recordPlaybackStart(t)
         }
     }
 
     private fun recordPlaybackStart(track: Track) {
-        if (!playbackHistoryRecorder.onPlaybackUpdate(track, true)) return
         historyManager.recordTrack(track)
         historyManager.getHistory().firstOrNull { it.track.videoId == track.videoId }?.let { entry ->
             syncAccountOperation("Listening history") {
@@ -2776,6 +2796,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     override fun onTrackCompleted(track: Track) {
+        playbackHistoryRecorder.resetForNewTrack()
         historyManager.recordCompletion(track.videoId)
         historyManager.getHistory().firstOrNull { it.track.videoId == track.videoId }?.let { entry ->
             syncAccountOperation("Listening history") { it.putHistory(entry) }
@@ -2820,6 +2841,8 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         runOnUiThread {
             setTrackPreparing(false)
             updatePlayPauseIcons(true)
+            val current = playbackService?.queueManager?.currentTrack() ?: queueManager.currentTrack()
+            checkAndRecordPlayback(current)
         }
     }
 

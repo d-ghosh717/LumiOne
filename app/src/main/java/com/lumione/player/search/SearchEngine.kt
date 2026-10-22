@@ -1,6 +1,7 @@
 package com.lumione.player.search
 
 import android.util.Log
+import com.lumione.player.queue.Track
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.*
@@ -27,10 +28,25 @@ data class SearchResult(
     val provider: String = "lumione",
     val providerId: String = videoId,
     val youtubeVideoId: String = videoId,
-    val recommendationReason: String = ""
+    val recommendationReason: String = "",
+    val source: String = "recommendation"
 ) {
     val trackId: String get() = videoId
 }
+
+fun SearchResult.toTrack() = Track(
+    videoId = videoId,
+    title = title,
+    artist = artist,
+    durationMs = durationMs,
+    thumbnailUrl = thumbnailUrl,
+    streamUrl = streamUrl,
+    provider = provider,
+    providerId = providerId,
+    youtubeVideoId = videoId,
+    recommendationReason = recommendationReason,
+    source = source
+)
 
 /**
  * Normalization, canonical key extraction, and deduplication engine for music tracks.
@@ -187,12 +203,16 @@ object TrackNormalizer {
             })
 
             val bestTrack = variants.first()
-            val (parsedArtist, _) = parseArtistAndTitle(bestTrack.title, bestTrack.artist)
-            val artistKey = cleanArtist(parsedArtist)
-            val currentCount = artistCountMap[artistKey] ?: 0
-            if (currentCount < maxPerArtist) {
+            val parsedArtists = MusicIntelligence.extractArtistList(bestTrack.artist).ifEmpty {
+                val (pa, _) = parseArtistAndTitle(bestTrack.title, bestTrack.artist)
+                listOf(cleanArtist(pa)).filter { it.isNotBlank() }
+            }
+            val maxCount = parsedArtists.maxOfOrNull { artistCountMap[it] ?: 0 } ?: 0
+            if (maxCount < maxPerArtist) {
                 results.add(bestTrack)
-                artistCountMap[artistKey] = currentCount + 1
+                for (a in parsedArtists) {
+                    artistCountMap[a] = (artistCountMap[a] ?: 0) + 1
+                }
             }
 
             if (allowAlternateVersions && variants.size > 1) {
@@ -202,10 +222,15 @@ object TrackNormalizer {
                     val mod = detectModifier(variant.title) ?: "original"
                     if (!seenModifiers.contains(mod)) {
                         seenModifiers.add(mod)
-                        val altCount = artistCountMap[artistKey] ?: 0
-                        if (altCount < maxPerArtist) {
+                        val altArtists = MusicIntelligence.extractArtistList(variant.artist).ifEmpty {
+                            listOf(cleanArtist(variant.artist))
+                        }
+                        val altMax = altArtists.maxOfOrNull { artistCountMap[it] ?: 0 } ?: 0
+                        if (altMax < maxPerArtist) {
                             results.add(variant)
-                            artistCountMap[artistKey] = altCount + 1
+                            for (a in altArtists) {
+                                artistCountMap[a] = (artistCountMap[a] ?: 0) + 1
+                            }
                         }
                     }
                 }
@@ -438,9 +463,88 @@ class SearchEngine {
         )
     }
 
+    suspend fun getRelatedTracks(
+        seedTrack: Track,
+        idToken: String? = null,
+        seedArtists: List<String> = emptyList(),
+        likedArtists: List<String> = emptyList(),
+        topPlayedArtists: List<String> = emptyList(),
+        likedTrackKeys: List<String> = emptyList(),
+        recentTrackKeys: List<String> = emptyList(),
+        skippedArtists: List<String> = emptyList(),
+        limit: Int = 15
+    ): List<SearchResult> = withContext(Dispatchers.IO) {
+        val (parsedArtist, parsedTitle) = TrackNormalizer.parseArtistAndTitle(seedTrack.title, seedTrack.artist)
+        val effectiveArtist = parsedArtist.ifBlank { seedTrack.artist }
+        val effectiveTitle = parsedTitle.ifBlank { seedTrack.title }
+        val seedKey = TrackNormalizer.extractCanonicalKey(effectiveTitle, effectiveArtist)
+
+        // 1. Try Backend Up Next Service (/api/recommendations/related)
+        try {
+            val encodedTitle = URLEncoder.encode(effectiveTitle, "UTF-8")
+            val encodedArtist = URLEncoder.encode(effectiveArtist, "UTF-8")
+            val encodedVideoId = URLEncoder.encode(seedTrack.videoId, "UTF-8")
+            val url = "$BACKEND_URL/api/recommendations/related?title=$encodedTitle&artist=$encodedArtist&videoId=$encodedVideoId&limit=$limit"
+            val response = getJsonAuthenticated(url, idToken, timeoutMs = 12000)
+            val backendResults = parseBackendResults(response)
+            if (backendResults.isNotEmpty()) {
+                Log.i(TAG, "Loaded ${backendResults.size} related tracks from backend for '$effectiveTitle' by '$effectiveArtist'")
+                return@withContext backendResults
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Backend related tracks call failed: ${e.message}. Using native offline candidate engine.")
+        }
+
+        // 2. Local Fallback Candidate Retrieval & Ranking
+        val candidatePool = mutableListOf<SearchResult>()
+        val isIndianOrDevotional = MusicIntelligence.isIndianOrDevotionalProfile(effectiveTitle, effectiveArtist)
+        if (isIndianOrDevotional) {
+            try {
+                if (effectiveArtist.isNotBlank()) {
+                    val saavnArtistSongs = searchJioSaavn("$effectiveArtist songs")
+                    candidatePool.addAll(saavnArtistSongs.take(8).map {
+                        it.copy(source = "seed_artist", recommendationReason = "Popular track by $effectiveArtist")
+                    })
+                }
+            } catch (_: Exception) {}
+        }
+
+        try {
+            if (effectiveArtist.isNotBlank()) {
+                val ytSimilar = searchLocalYouTube("$effectiveArtist similar songs music")
+                candidatePool.addAll(ytSimilar.take(8).map {
+                    it.copy(source = "related_search", recommendationReason = "Similar style to $effectiveArtist")
+                })
+
+                val ytRadio = searchLocalYouTube("$effectiveArtist radio mix")
+                candidatePool.addAll(ytRadio.take(8).map {
+                    it.copy(source = "related_search", recommendationReason = "Radio mix")
+                })
+            }
+        } catch (_: Exception) {}
+
+        // Note: Generic trending music charts are intentionally excluded from seed-specific radio queues.
+
+        val combinedSeedArtists = (listOf(effectiveArtist) + seedArtists).filter { it.isNotBlank() }.distinct()
+        val combinedRecentKeys = (listOf(seedKey) + recentTrackKeys).distinct()
+
+        return@withContext rankRecommendationsLocally(
+            candidates = candidatePool,
+            seedArtists = combinedSeedArtists,
+            seedTitle = effectiveTitle,
+            likedArtists = likedArtists,
+            topPlayedArtists = topPlayedArtists,
+            likedTrackKeys = likedTrackKeys,
+            recentTrackKeys = combinedRecentKeys,
+            skippedArtists = skippedArtists,
+            limit = limit
+        )
+    }
+
     fun rankRecommendationsLocally(
         candidates: List<SearchResult>,
         seedArtists: List<String> = emptyList(),
+        seedTitle: String = "",
         likedArtists: List<String> = emptyList(),
         topPlayedArtists: List<String> = emptyList(),
         likedTrackKeys: List<String> = emptyList(),
@@ -448,72 +552,76 @@ class SearchEngine {
         skippedArtists: List<String> = emptyList(),
         limit: Int = 20
     ): List<SearchResult> {
+        val cleanSeedArtists = seedArtists.map { TrackNormalizer.cleanArtist(it) }.filter { it.isNotBlank() }
         val cleanCandidates = TrackNormalizer.deduplicateAndFilter(
             candidates,
             allowAlternateVersions = false,
-            maxPerArtist = 2,
+            maxPerArtist = if (cleanSeedArtists.isNotEmpty()) 3 else 2,
             seedKeysToExclude = recentTrackKeys.toSet()
         )
 
-        val cleanLikedArtists = likedArtists.map { TrackNormalizer.cleanArtist(it) }
-        val cleanSeedArtists = seedArtists.map { TrackNormalizer.cleanArtist(it) }
-        val cleanTopArtists = topPlayedArtists.map { TrackNormalizer.cleanArtist(it) }
-        val cleanSkippedArtists = skippedArtists.map { TrackNormalizer.cleanArtist(it) }
-        val likedKeysSet = likedTrackKeys.map { it.lowercase() }.toSet()
+        val cleanLikedArtists = (likedArtists + topPlayedArtists).map { TrackNormalizer.cleanArtist(it) }.filter { it.isNotBlank() }.toSet()
+        val seedArtistsSet = cleanSeedArtists.toSet()
+        val cleanRecentKeys = recentTrackKeys.map { it.lowercase(Locale.ROOT) }.toSet()
 
-        val pool = cleanCandidates.toMutableList()
+        // Build seed profile if seed artists or seed title are available
+        val seedProfile: TrackProfile? = if (cleanSeedArtists.isNotEmpty() || seedTitle.isNotBlank()) {
+            MusicIntelligence.buildTrackProfile(title = seedTitle, artist = cleanSeedArtists.firstOrNull() ?: "")
+        } else null
+
+        // Apply Phase 3: Genre and Mood Eligibility Gate
+        val eligibleCandidates = mutableListOf<Pair<SearchResult, TrackProfile>>()
+        for (cand in cleanCandidates) {
+            val (parsedArtist, parsedTitle) = TrackNormalizer.parseArtistAndTitle(cand.title, cand.artist)
+            val candProfile = MusicIntelligence.buildTrackProfile(
+                title = parsedTitle.ifBlank { cand.title },
+                artist = parsedArtist.ifBlank { cand.artist }
+            )
+
+            if (seedProfile != null) {
+                val (isEligible, _) = MusicIntelligence.checkEligibilityGate(seedProfile, candProfile)
+                if (!isEligible) {
+                    continue // Gate rejected! Incompatible genre or energy mismatch
+                }
+            }
+            eligibleCandidates.add(Pair(cand, candProfile))
+        }
+
+        val cleanSkippedArtists = skippedArtists.map { TrackNormalizer.cleanArtist(it) }.filter { it.isNotBlank() }.toSet()
+        val likedKeysSet = likedTrackKeys.map { it.lowercase(Locale.ROOT) }.toSet()
+
+        val pool = eligibleCandidates.toMutableList()
         val selected = mutableListOf<SearchResult>()
 
         while (pool.isNotEmpty() && selected.size < limit) {
             var bestIndex = -1
             var bestScore = -Double.MAX_VALUE
+            var bestReason = ""
 
             for (i in pool.indices) {
-                val candidate = pool[i]
-                var score = 5.0
-                val (parsedArtist, _) = TrackNormalizer.parseArtistAndTitle(candidate.title, candidate.artist)
-                val cArtist = TrackNormalizer.cleanArtist(parsedArtist)
-                val cKey = TrackNormalizer.extractCanonicalKey(candidate.title, candidate.artist).lowercase()
+                val (candidate, candProfile) = pool[i]
+                val breakdown = MusicIntelligence.scoreCandidate(
+                    candidate = candidate,
+                    candProfile = candProfile,
+                    seedProfile = seedProfile,
+                    likedArtists = cleanLikedArtists,
+                    seedArtists = seedArtistsSet,
+                    likedTrackKeys = likedKeysSet,
+                    skippedArtists = cleanSkippedArtists,
+                    recentKeys = cleanRecentKeys,
+                    selectedSoFar = selected
+                )
 
-                if (cleanLikedArtists.contains(cArtist) || cleanTopArtists.contains(cArtist)) {
-                    score += 3.5
-                } else if (cleanSeedArtists.contains(cArtist)) {
-                    score += 2.5
-                } else {
-                    score += 2.0 // Discovery bonus
-                }
-
-                if (likedKeysSet.contains(cKey)) {
-                    score += 2.0
-                }
-
-                if (cleanSkippedArtists.contains(cArtist)) {
-                    score -= 2.5
-                }
-
-                if (TrackNormalizer.detectModifier(candidate.title) != null) {
-                    score -= 5.0
-                }
-
-                val countOfThisArtist = selected.count { TrackNormalizer.cleanArtist(it.artist) == cArtist }
-                if (countOfThisArtist == 1) {
-                    score -= 3.0
-                } else if (countOfThisArtist >= 2) {
-                    score -= 10.0
-                }
-
-                if (candidate.provider == "saavn") {
-                    score += 1.0
-                }
-
-                if (score > bestScore) {
-                    bestScore = score
+                if (breakdown.totalScore > bestScore) {
+                    bestScore = breakdown.totalScore
                     bestIndex = i
+                    bestReason = candidate.recommendationReason.ifBlank { breakdown.primaryExplanation }
                 }
             }
 
             if (bestIndex >= 0 && bestScore > 0) {
-                selected.add(pool.removeAt(bestIndex))
+                val (chosen, _) = pool.removeAt(bestIndex)
+                selected.add(chosen.copy(recommendationReason = bestReason))
             } else {
                 break
             }
@@ -724,7 +832,10 @@ class SearchEngine {
                 val durationSec = item.optLong("duration", item.optLong("durationSec", 0L))
                 val thumbnail = item.optString("thumbnail")
                 val provider = item.optString("provider", "lumione")
-                val reason = item.optString("recommendationReason", "")
+                val reason = item.optString("recommendationReason")
+                    .ifBlank { item.optString("primaryExplanation") }
+                    .ifBlank { item.optString("explanation", "") }
+                val source = item.optString("source", "backend")
                 val thumb = if (thumbnail.isNotBlank() && !thumbnail.contains("invidious")) {
                     thumbnail
                 } else {
@@ -741,7 +852,8 @@ class SearchEngine {
                         provider = provider,
                         providerId = id,
                         youtubeVideoId = id,
-                        recommendationReason = reason
+                        recommendationReason = reason,
+                        source = source
                     )
                 )
             }

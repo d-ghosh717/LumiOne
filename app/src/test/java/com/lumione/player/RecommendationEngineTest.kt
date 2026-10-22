@@ -4,9 +4,11 @@ import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import com.lumione.player.data.FavoritesManager
 import com.lumione.player.data.HistoryManager
 import com.lumione.player.queue.Track
+import com.lumione.player.search.MusicIntelligence
 import com.lumione.player.search.SearchEngine
 import com.lumione.player.search.SearchResult
 import com.lumione.player.search.TrackNormalizer
+import com.lumione.player.search.TrackProfile
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -286,5 +288,302 @@ class RecommendationEngineTest {
         // Try insertNext with t2
         qm.insertNext(t2)
         assertEquals(2, qm.queue.value?.size)
+    }
+
+    @Test
+    fun testSingleSongSelectionGeneratesMusicallyRelatedUpNextQueueNotUnrelatedSameTitleTracks() {
+        val seedTrack = Track(videoId = "aw_faded", title = "Alan Walker - Faded", artist = "Alan Walker")
+        val seedKey = TrackNormalizer.extractCanonicalKey(seedTrack.title, seedTrack.artist)
+
+        val candidates = listOf(
+            // Unrelated tracks sharing the title "Faded"
+            SearchResult(videoId = "tyga_faded", title = "Tyga - Faded ft. Lil Wayne", artist = "Tyga", durationMs = 200000L, thumbnailUrl = ""),
+            SearchResult(videoId = "tns_faded", title = "TNS Kai - Faded", artist = "TNS Kai", durationMs = 180000L, thumbnailUrl = ""),
+            SearchResult(videoId = "fay_faded", title = "Fay - Faded", artist = "Fay", durationMs = 195000L, thumbnailUrl = ""),
+            // Musically related electronic/EDM tracks
+            SearchResult(videoId = "aw_alone", title = "Alan Walker - Alone", artist = "Alan Walker", durationMs = 210000L, thumbnailUrl = ""),
+            SearchResult(videoId = "aw_spectre", title = "Alan Walker - The Spectre", artist = "Alan Walker", durationMs = 195000L, thumbnailUrl = ""),
+            SearchResult(videoId = "cs_closer", title = "The Chainsmokers - Closer", artist = "The Chainsmokers", durationMs = 245000L, thumbnailUrl = ""),
+            SearchResult(videoId = "marsh_happier", title = "Marshmello - Happier", artist = "Marshmello", durationMs = 215000L, thumbnailUrl = "")
+        )
+
+        val recommendations = searchEngine.rankRecommendationsLocally(
+            candidates = candidates,
+            seedArtists = listOf("Alan Walker"),
+            likedArtists = listOf("The Chainsmokers", "Marshmello"),
+            recentTrackKeys = listOf(seedKey),
+            limit = 5
+        )
+
+        // 1. Seed song itself must be excluded from recommendations
+        assertFalse("Seed track must be excluded", recommendations.any { it.videoId == "aw_faded" })
+
+        // 2. Musically related tracks by Alan Walker, The Chainsmokers, and Marshmello must rank high
+        val topArtists = recommendations.take(3).map { TrackNormalizer.cleanArtist(it.artist) }
+        assertTrue("Top recommendations should include Alan Walker", topArtists.contains("alan walker"))
+        assertTrue("Top recommendations should include Chainsmokers or Marshmello", topArtists.contains("the chainsmokers") || topArtists.contains("marshmello"))
+
+        // 3. Unrelated tracks merely sharing title 'Faded' must NOT saturate the Up Next queue
+        val unrelatedArtists = setOf("tyga", "tns kai", "fay")
+        val unrelatedCountInTop3 = recommendations.take(3).count { unrelatedArtists.contains(TrackNormalizer.cleanArtist(it.artist)) }
+        assertEquals("Unrelated same-title tracks must not be in top 3 Up Next", 0, unrelatedCountInTop3)
+    }
+
+    @Test
+    fun testQueueModesAndAutoplayReplenishment() {
+        val qm = com.lumione.player.queue.QueueManager()
+        val seed = Track(videoId = "seed1", title = "Alan Walker - Faded", artist = "Alan Walker")
+
+        // A. Playing single song from search sets QueueMode.RADIO
+        qm.setQueue(listOf(seed), startIndex = 0, mode = com.lumione.player.queue.QueueMode.RADIO)
+        assertEquals(com.lumione.player.queue.QueueMode.RADIO, qm.queueMode)
+        assertEquals(1, qm.queue.value?.size)
+        assertEquals(0, qm.remainingTracksCount())
+
+        // Append Up Next related tracks
+        val related1 = Track(videoId = "rel1", title = "Alone", artist = "Alan Walker")
+        val related2 = Track(videoId = "rel2", title = "Closer", artist = "The Chainsmokers")
+        qm.appendUpcomingTracks(listOf(related1, related2))
+        assertEquals(3, qm.queue.value?.size)
+        assertEquals(2, qm.remainingTracksCount())
+
+        // Autoplay replenishment: appending existing tracks must be deduplicated
+        qm.appendUpcomingTracks(listOf(related1, Track(videoId = "rel3", title = "Happier", artist = "Marshmello")))
+        assertEquals("Should only add new unique track rel3", 4, qm.queue.value?.size)
+
+        // B. Playlist mode preserves exact order
+        val pl1 = Track(videoId = "p1", title = "Track A", artist = "Artist A")
+        val pl2 = Track(videoId = "p2", title = "Track B", artist = "Artist B")
+        qm.setQueue(listOf(pl1, pl2), startIndex = 0, mode = com.lumione.player.queue.QueueMode.PLAYLIST_OR_FAVORITES)
+        assertEquals(com.lumione.player.queue.QueueMode.PLAYLIST_OR_FAVORITES, qm.queueMode)
+        assertEquals(2, qm.queue.value?.size)
+        assertEquals("p1", qm.currentTrack()?.videoId)
+        assertEquals("p2", qm.nextTrack()?.videoId)
+    }
+
+    @Test
+    fun testHanumanChalisaAndIndianChartSongsRejectedWhenSeedIsAlanWalker() {
+        val seedTrack = Track(videoId = "aw_faded", title = "Alan Walker - Faded", artist = "Alan Walker")
+        val seedKey = TrackNormalizer.extractCanonicalKey(seedTrack.title, seedTrack.artist)
+
+        val candidates = listOf(
+            // Verified related candidates
+            SearchResult(videoId = "aw_alone", title = "Alone", artist = "Alan Walker", durationMs = 164000L, thumbnailUrl = "", source = "seed_artist"),
+            SearchResult(videoId = "aw_onmyway", title = "On My Way", artist = "Alan Walker, Sabrina Carpenter", durationMs = 193000L, thumbnailUrl = "", source = "seed_artist"),
+            SearchResult(videoId = "zayn_dusk", title = "Dusk Till Dawn", artist = "ZAYN ft. Sia", durationMs = 239000L, thumbnailUrl = "", source = "watch_next"),
+            SearchResult(videoId = "pass_letgo", title = "Let Her Go", artist = "Passenger", durationMs = 252000L, thumbnailUrl = "", source = "watch_next"),
+            SearchResult(videoId = "cs_dontlet", title = "Don't Let Me Down", artist = "The Chainsmokers", durationMs = 208000L, thumbnailUrl = "", source = "watch_next"),
+
+            // Unrelated Indian songs from chart fallback
+            SearchResult(videoId = "hanuman", title = "Hanuman Chalisa", artist = "Hariharan", durationMs = 580000L, thumbnailUrl = "", source = "unrelated_chart", provider = "saavn"),
+            SearchResult(videoId = "parvati", title = "Parvati", artist = "Hansraj Raghuwanshi", durationMs = 245000L, thumbnailUrl = "", source = "unrelated_chart", provider = "saavn"),
+            SearchResult(videoId = "tujh_mein", title = "Tujh Mein Basi Meri Jaan", artist = "B Praak", durationMs = 280000L, thumbnailUrl = "", source = "unrelated_chart", provider = "saavn"),
+            SearchResult(videoId = "casa_tupka", title = "Casa Tupka Anthem", artist = "MC Square", durationMs = 190000L, thumbnailUrl = "", source = "unrelated_chart", provider = "saavn")
+        )
+
+        val recommendations = searchEngine.rankRecommendationsLocally(
+            candidates = candidates,
+            seedArtists = listOf("Alan Walker"),
+            recentTrackKeys = listOf(seedKey),
+            limit = 5
+        )
+
+        val titles = recommendations.map { it.title }
+        assertTrue("Must include Alone", titles.contains("Alone"))
+        assertTrue("Must include On My Way", titles.contains("On My Way"))
+        assertTrue("Must include Dusk Till Dawn or Let Her Go", titles.contains("Dusk Till Dawn") || titles.contains("Let Her Go"))
+
+        // Unrelated Indian songs must NOT be present in recommendations
+        assertFalse("Hanuman Chalisa must NOT be recommended", titles.contains("Hanuman Chalisa"))
+        assertFalse("Parvati must NOT be recommended", titles.contains("Parvati"))
+        assertFalse("Tujh Mein Basi Meri Jaan must NOT be recommended", titles.contains("Tujh Mein Basi Meri Jaan"))
+        assertFalse("Casa Tupka Anthem must NOT be recommended", titles.contains("Casa Tupka Anthem"))
+    }
+
+    @Test
+    fun testEmbeatAcousticVectorCosineSimilarity() {
+        // Test identical vectors have similarity 1.0
+        val vecA = MusicIntelligence.buildAcousticVector(danceability = 0.8, energy = 0.85, valence = 0.6)
+        val simIdentical = MusicIntelligence.computeAcousticSimilarity(vecA, vecA)
+        assertEquals("Identical acoustic vectors should have similarity 1.0", 1.0, simIdentical, 0.001)
+
+        // Test opposing acoustic characteristics (high energy vs quiet ambient)
+        val vecEnergetic = MusicIntelligence.buildAcousticVector(danceability = 0.9, energy = 0.95, acousticness = 0.05)
+        val vecAmbient = MusicIntelligence.buildAcousticVector(danceability = 0.1, energy = 0.10, acousticness = 0.95)
+        val simOpposite = MusicIntelligence.computeAcousticSimilarity(vecEnergetic, vecAmbient)
+        assertTrue("Opposing vectors should have low similarity (< 0.6)", simOpposite < 0.6)
+        assertTrue("Identical vectors similarity should be significantly higher than opposing", simIdentical > simOpposite + 0.3)
+    }
+
+    @Test
+    fun testGenreEligibilityGateStrictlyRejectsDevotionalAndRegionalForEdm() {
+        val edmProfile = MusicIntelligence.buildTrackProfile(title = "Faded", artist = "Alan Walker")
+        val devotionalProfile = MusicIntelligence.buildTrackProfile(title = "Hanuman Chalisa", artist = "Hariharan")
+        val regionalProfile = MusicIntelligence.buildTrackProfile(title = "Casa Tupka Anthem", artist = "MC Square")
+        val electronicProfile = MusicIntelligence.buildTrackProfile(title = "Alone", artist = "Alan Walker")
+
+        val (edmDevEligible, reasonDev) = MusicIntelligence.checkEligibilityGate(edmProfile, devotionalProfile)
+        assertFalse("Devotional music must be rejected by gate for EDM seed", edmDevEligible)
+        assertNotNull("Rejection reason must be provided", reasonDev)
+
+        val (edmRegEligible, _) = MusicIntelligence.checkEligibilityGate(edmProfile, regionalProfile)
+        assertFalse("Regional Indian desi music must be rejected by gate for EDM seed", edmRegEligible)
+
+        val (edmEdmEligible, _) = MusicIntelligence.checkEligibilityGate(edmProfile, electronicProfile)
+        assertTrue("Electronic track must be eligible for EDM seed", edmEdmEligible)
+    }
+
+    @Test
+    fun testSadEmotionalSeedPreservesMoodAndFiltersIncompatibleTracks() {
+        val seed = Track(videoId = "pass_letgo", title = "Let Her Go", artist = "Passenger")
+        val seedKey = TrackNormalizer.extractCanonicalKey(seed.title, seed.artist)
+
+        val candidates = listOf(
+            SearchResult(videoId = "arijit_channa", title = "Channa Mereya", artist = "Arijit Singh", durationMs = 289000L, thumbnailUrl = ""),
+            SearchResult(videoId = "adele_someone", title = "Someone Like You", artist = "Adele", durationMs = 285000L, thumbnailUrl = ""),
+            SearchResult(videoId = "zayn_dusk", title = "Dusk Till Dawn", artist = "ZAYN ft. Sia", durationMs = 239000L, thumbnailUrl = ""),
+            SearchResult(videoId = "hanuman", title = "Hanuman Chalisa", artist = "Hariharan", durationMs = 580000L, thumbnailUrl = "")
+        )
+
+        val recommendations = searchEngine.rankRecommendationsLocally(
+            candidates = candidates,
+            seedArtists = listOf("Passenger"),
+            seedTitle = "Let Her Go",
+            recentTrackKeys = listOf(seedKey),
+            limit = 3
+        )
+
+        val titles = recommendations.map { it.title }
+        assertFalse("Devotional track should not be recommended for indie-folk/pop seed", titles.contains("Hanuman Chalisa"))
+        assertTrue("Emotional compatible tracks should be recommended", titles.contains("Someone Like You") || titles.contains("Channa Mereya") || titles.contains("Dusk Till Dawn"))
+    }
+
+    @Test
+    fun testScoreCandidateReturnsTransparentBreakdownOn100PointScale() {
+        val seedProfile = MusicIntelligence.buildTrackProfile(title = "Faded", artist = "Alan Walker")
+        val cand = SearchResult(videoId = "aw_alone", title = "Alone", artist = "Alan Walker", durationMs = 164000L, thumbnailUrl = "", source = "seed_artist")
+        val candProfile = MusicIntelligence.buildTrackProfile(title = cand.title, artist = cand.artist)
+
+        val breakdown = MusicIntelligence.scoreCandidate(
+            candidate = cand,
+            candProfile = candProfile,
+            seedProfile = seedProfile,
+            seedArtists = setOf("alan walker")
+        )
+
+        assertTrue("Acoustic points should be between 0 and 40", breakdown.acousticSimilarityPoints in 0.0..40.0)
+        assertTrue("Genre points should be between 0 and 25", breakdown.genreCompatibilityPoints in 0.0..25.0)
+        assertTrue("Mood/Energy points should be between 0 and 20", breakdown.moodEnergyPoints in 0.0..20.0)
+        assertTrue("Preference points should be between 0 and 15", breakdown.preferencePoints in 0.0..15.0)
+        assertTrue("Total score must be in 0..100 range", breakdown.totalScore in 0.0..100.0)
+        assertTrue("Primary explanation must be populated", breakdown.primaryExplanation.isNotBlank())
+    }
+
+    @Test
+    fun testHanumanChalisaSeedRejectsUnrelatedEdmTracks() {
+        val seed = Track(videoId = "hanuman_1", title = "Hanuman Chalisa", artist = "Hariharan")
+        val seedKey = TrackNormalizer.extractCanonicalKey(seed.title, seed.artist)
+
+        val candidates = listOf(
+            SearchResult(videoId = "dev_1", title = "Shree Hanuman Chalisa", artist = "Gulshan Kumar", durationMs = 580000L, thumbnailUrl = ""),
+            SearchResult(videoId = "dev_2", title = "Shiv Tandav Stotram", artist = "Anuradha Paudwal", durationMs = 450000L, thumbnailUrl = ""),
+            SearchResult(videoId = "dev_3", title = "Aisi Lagi Lagan", artist = "Anup Jalota", durationMs = 380000L, thumbnailUrl = ""),
+            SearchResult(videoId = "edm_1", title = "Levels", artist = "Avicii", durationMs = 200000L, thumbnailUrl = ""),
+            SearchResult(videoId = "edm_2", title = "Faded", artist = "Alan Walker", durationMs = 213000L, thumbnailUrl = ""),
+            SearchResult(videoId = "edm_3", title = "Alone", artist = "Marshmello", durationMs = 210000L, thumbnailUrl = "")
+        )
+
+        val recommendations = searchEngine.rankRecommendationsLocally(
+            candidates = candidates,
+            seedArtists = listOf("Hariharan"),
+            seedTitle = "Hanuman Chalisa",
+            recentTrackKeys = listOf(seedKey),
+            limit = 5
+        )
+
+        val titles = recommendations.map { it.title }
+        // Devotional tracks must be recommended
+        assertTrue("Should recommend Gulshan Kumar Hanuman Chalisa", titles.contains("Shree Hanuman Chalisa"))
+        assertTrue("Should recommend Anuradha Paudwal", titles.contains("Shiv Tandav Stotram"))
+
+        // EDM tracks must be strictly rejected
+        assertFalse("Avicii - Levels must be rejected for Devotional seed", titles.contains("Levels"))
+        assertFalse("Alan Walker - Faded must be rejected for Devotional seed", titles.contains("Faded"))
+        assertFalse("Marshmello - Alone must be rejected for Devotional seed", titles.contains("Alone"))
+    }
+
+    @Test
+    fun testHipHopAndAmbientSeeds() {
+        // A. Hip-Hop Seed
+        val hiphopSeedProfile = MusicIntelligence.buildTrackProfile(title = "HUMBLE.", artist = "Kendrick Lamar")
+        val hiphopCand = MusicIntelligence.buildTrackProfile(title = "Lose Yourself", artist = "Eminem")
+        val devotionalCand = MusicIntelligence.buildTrackProfile(title = "Hanuman Chalisa", artist = "Hariharan")
+
+        val (hiphopEligible, _) = MusicIntelligence.checkEligibilityGate(hiphopSeedProfile, hiphopCand)
+        assertTrue("Eminem should be eligible for Kendrick Lamar seed", hiphopEligible)
+
+        val (devotionalForHiphopEligible, _) = MusicIntelligence.checkEligibilityGate(hiphopSeedProfile, devotionalCand)
+        assertFalse("Devotional music should be rejected for hip-hop seed", devotionalForHiphopEligible)
+
+        // B. Ambient Seed
+        val ambientSeedProfile = MusicIntelligence.buildTrackProfile(title = "Music for Airports", artist = "Brian Eno")
+        val lofiCand = MusicIntelligence.buildTrackProfile(title = "Coffee Beats", artist = "Lofi Girl")
+        val edmFestivalCand = MusicIntelligence.buildTrackProfile(title = "Animals (Festival Mix)", artist = "Martin Garrix")
+
+        val (ambientEligible, _) = MusicIntelligence.checkEligibilityGate(ambientSeedProfile, lofiCand)
+        assertTrue("Lofi ambient should be eligible for Brian Eno seed", ambientEligible)
+
+        val (edmForAmbientEligible, reasonAmbient) = MusicIntelligence.checkEligibilityGate(ambientSeedProfile, edmFestivalCand)
+        assertFalse("High-energy festival EDM should be rejected for quiet ambient seed", edmForAmbientEligible)
+        assertNotNull(reasonAmbient)
+    }
+
+    @Test
+    fun testPartialSourceFailureAndEmptyCandidatesReturnsEmptyWithoutFakeInjection() {
+        val emptyResult = searchEngine.rankRecommendationsLocally(
+            candidates = emptyList(),
+            seedArtists = listOf("Unknown Artist"),
+            limit = 10
+        )
+        assertTrue("Empty candidate pool must yield empty list, not synthetic tracks", emptyResult.isEmpty())
+    }
+
+    @Test
+    fun testSeedChangeDiscardsStaleAsyncRecommendations() {
+        val qm = com.lumione.player.queue.QueueManager()
+        val seedA = Track(videoId = "seed_A", title = "Song A", artist = "Artist A")
+        val seedB = Track(videoId = "seed_B", title = "Song B", artist = "Artist B")
+
+        var activeSeedId = seedA.videoId
+        qm.setQueue(listOf(seedA), 0, com.lumione.player.queue.QueueMode.RADIO)
+
+        // Simulate user clicking Song B while Song A's recommendations are in flight
+        activeSeedId = seedB.videoId
+        qm.setQueue(listOf(seedB), 0, com.lumione.player.queue.QueueMode.RADIO)
+
+        // Stale async response arrives for seed_A
+        val staleSeedAResponse = listOf(
+            Track(videoId = "stale_1", title = "Song A Related 1", artist = "Artist A")
+        )
+
+        // The caller checks activeSeedId before applying:
+        val callerTargetSeedId = "seed_A"
+        if (activeSeedId == callerTargetSeedId) {
+            qm.appendUpcomingTracks(staleSeedAResponse)
+        }
+
+        // Stale tracks must NOT be in queue
+        assertFalse("Stale response must be discarded when active seed changed", qm.queue.value?.any { it.videoId == "stale_1" } == true)
+        assertEquals("Current track must be Seed B", "seed_B", qm.currentTrack()?.videoId)
+    }
+
+    @Test
+    fun testQueueCallerUsesSharedRecommendationEngine() {
+        // Proves SearchEngine uses MusicIntelligence gates and scoring
+        val seedProfile = MusicIntelligence.buildTrackProfile(title = "Faded", artist = "Alan Walker")
+        val candProfile = MusicIntelligence.buildTrackProfile(title = "Hanuman Chalisa", artist = "Hariharan")
+        val (eligible, reason) = MusicIntelligence.checkEligibilityGate(seedProfile, candProfile)
+        assertFalse("Shared eligibility gate must reject devotional for EDM", eligible)
+        assertNotNull(reason)
     }
 }

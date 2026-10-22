@@ -2,6 +2,7 @@ package com.lumione.player.queue
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import com.lumione.player.search.TrackNormalizer
 
 data class Track(
     val videoId: String,
@@ -12,7 +13,10 @@ data class Track(
     val streamUrl: String = "",
     val provider: String = "lumione",
     val providerId: String = videoId,
-    val youtubeVideoId: String = videoId
+    val youtubeVideoId: String = videoId,
+    val recommendationReason: String = "",
+    val source: String = "recommendation",
+    val isManual: Boolean = false
 ) {
     val trackId: String get() = videoId
 
@@ -23,7 +27,15 @@ data class Track(
 
 enum class RepeatMode { NONE, ONE, ALL }
 
+enum class QueueMode {
+    RADIO,                  // Single song selection; upcoming queue is algorithmic related music / Up Next
+    SEARCH_RESULTS,         // Explicit playback of a search results collection
+    PLAYLIST_OR_FAVORITES   // User playlist, favorites, or history; preserves exact ordering
+}
+
 class QueueManager {
+
+    var queueMode: QueueMode = QueueMode.RADIO
 
     private val _queue = MutableLiveData<List<Track>>(emptyList())
     val queue: LiveData<List<Track>> = _queue
@@ -37,7 +49,8 @@ class QueueManager {
 
     // ─── Queue Manipulation ───────────────────────────────────────────────────
 
-    fun setQueue(tracks: List<Track>, startIndex: Int = 0) {
+    fun setQueue(tracks: List<Track>, startIndex: Int = 0, mode: QueueMode = QueueMode.RADIO) {
+        this.queueMode = mode
         if (tracks.isEmpty()) {
             _queue.value = emptyList()
             _currentIndex.value = -1
@@ -78,19 +91,79 @@ class QueueManager {
         history.clear()
     }
 
-    fun addToQueue(track: Track) {
-        val current = _queue.value ?: emptyList()
-        if (current.any { it.videoId == track.videoId }) return
-        _queue.value = current + track
+    fun remainingTracksCount(): Int {
+        val q = _queue.value ?: return 0
+        val ci = _currentIndex.value ?: return 0
+        return (q.size - 1 - ci).coerceAtLeast(0)
     }
 
-    fun insertNext(track: Track) {
+    fun appendUpcomingTracks(newTracks: List<Track>) {
+        if (newTracks.isEmpty()) return
+        val current = _queue.value?.toMutableList() ?: mutableListOf()
+        val seenIds = current.map { it.videoId }.toMutableSet()
+        val seenKeys = current.map { TrackNormalizer.extractCanonicalKey(it.title, it.artist) }.toMutableSet()
+
+        val toAdd = mutableListOf<Track>()
+        for (t in newTracks) {
+            val key = TrackNormalizer.extractCanonicalKey(t.title, t.artist)
+            if (!seenIds.contains(t.videoId) && !seenKeys.contains(key)) {
+                seenIds.add(t.videoId)
+                seenKeys.add(key)
+                toAdd.add(t)
+            }
+        }
+        if (toAdd.isNotEmpty()) {
+            current.addAll(toAdd)
+            _queue.value = current
+        }
+    }
+
+    fun addToQueue(track: Track, isManual: Boolean = true) {
+        val current = _queue.value ?: emptyList()
+        if (current.any { it.videoId == track.videoId }) return
+        _queue.value = current + track.copy(isManual = isManual)
+    }
+
+    fun insertNext(track: Track, isManual: Boolean = true) {
         val current = _queue.value?.toMutableList() ?: mutableListOf()
         val ci = _currentIndex.value ?: -1
         if (current.getOrNull(ci + 1)?.videoId == track.videoId) return
         val insertAt = ci + 1
-        current.add(insertAt.coerceIn(0, current.size), track)
+        current.add(insertAt.coerceIn(0, current.size), track.copy(isManual = isManual))
         _queue.value = current
+    }
+
+    fun replaceGeneratedUpcomingTracks(newTracks: List<Track>) {
+        val current = _queue.value?.toMutableList() ?: mutableListOf()
+        val ci = _currentIndex.value ?: return
+        if (ci !in current.indices) {
+            appendUpcomingTracks(newTracks)
+            return
+        }
+
+        val prefix = current.subList(0, ci + 1).toMutableList()
+        val manualUpcoming = current.subList(ci + 1, current.size).filter { it.isManual }
+
+        val seenIds = prefix.map { it.videoId }.toMutableSet()
+        val seenKeys = prefix.map { TrackNormalizer.extractCanonicalKey(it.title, it.artist) }.toMutableSet()
+
+        val newUpcoming = mutableListOf<Track>()
+        for (m in manualUpcoming) {
+            seenIds.add(m.videoId)
+            seenKeys.add(TrackNormalizer.extractCanonicalKey(m.title, m.artist))
+            newUpcoming.add(m)
+        }
+
+        for (t in newTracks) {
+            val key = TrackNormalizer.extractCanonicalKey(t.title, t.artist)
+            if (!seenIds.contains(t.videoId) && !seenKeys.contains(key)) {
+                seenIds.add(t.videoId)
+                seenKeys.add(key)
+                newUpcoming.add(t)
+            }
+        }
+
+        _queue.value = prefix + newUpcoming
     }
 
     fun updateCurrentTrack(track: Track) {

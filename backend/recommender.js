@@ -10,12 +10,12 @@
  */
 
 // ─── Non-Music Video Filter ─────────────────────────────────────────────
-const NON_MUSIC_REGEX = /\b(gameplay|walkthrough|playthrough|let'?s play|lets play|gta\s*[5v]|gta\s*online|fortnite|roblox|minecraft|free\s*fire|pubg|call\s*of\s*duty|cod|valorant|apex\s*legends|speedrun|cutscenes?|game\s*trailer|asmr|mukbang|slime|satisfying|unboxing|prank|comedy video|funny video|funny\s*moments|puzzle|riddle|challenge|diy|crafts|life\s*hacks|vlog|daily vlog|reaction to|reacting|roast|news live|live stream|livestream|full movie|full episode|episode \d+|season \d+|tier list|audiobook|podcast|interview|shorts|meme|compilation|sfx|sound effects?|10 hour|1 hour loop|24\/7|karaoke backing track)\b/i;
+const NON_MUSIC_REGEX = /\b(gameplay|walkthrough|playthrough|let'?s play|lets play|gta\s*[5v]|gta\s*online|fortnite|roblox|minecraft|free\s*fire|pubg|call\s*of\s*duty|cod|valorant|apex\s*legends|speedrun|cutscenes?|game\s*trailer|asmr|mukbang|slime|satisfying|unboxing|prank|comedy video|funny video|funny\s*moments|puzzle|riddle|challenge|diy|crafts|life\s*hacks|vlog|daily vlog|reaction to|reacting|roast|news live|live stream|livestream|full movie|full episode|episode \d+|season \d+|tier list|audiobook|podcast|interview|shorts|meme|compilation|sfx|sound effects?|10 hour|1 hour loop|24\/7|karaoke backing track|full album|best of [a-zA-Z0-9\s]+ full album|greatest hits full album|album mix|iconic hits & new songs)\b/i;
 
 function isMusicContent(title, artist, durationSec) {
     if (!title || typeof title !== 'string' || title.trim().length === 0) return false;
-    // Standard songs are between 35s and 900s (15 min)
-    if (durationSec > 900) return false;
+    // Standard songs are between 35s and 600s (10 min). Album mixes/compilations exceed this.
+    if (durationSec > 600) return false;
     if (durationSec > 0 && durationSec < 35) return false;
     const combined = `${title} ${artist || ''}`;
     return !NON_MUSIC_REGEX.test(combined);
@@ -220,13 +220,16 @@ function deduplicateAndPruneVersions(candidates, options = {}) {
 
         const bestTrack = variants[0];
         const { artist: parsedArtist } = parseArtistAndTitle(bestTrack.title, bestTrack.artist);
-        const artistKey = cleanArtist(parsedArtist);
+        const rawArtistList = extractArtistList(bestTrack.artist);
+        const artistKeys = rawArtistList.length > 0 ? rawArtistList : [cleanArtist(parsedArtist)];
 
-        // Artist saturation limit
-        const currentCount = artistCountMap.get(artistKey) || 0;
-        if (currentCount < maxPerArtist) {
+        // Artist saturation limit across all participating artists in track
+        const maxSeen = Math.max(...artistKeys.map(k => artistCountMap.get(k) || 0), 0);
+        if (maxSeen < maxPerArtist) {
             validCandidates.push(bestTrack);
-            artistCountMap.set(artistKey, currentCount + 1);
+            for (const k of artistKeys) {
+                artistCountMap.set(k, (artistCountMap.get(k) || 0) + 1);
+            }
         }
 
         // If user explicitly allowed alternate versions (e.g. remix search), keep up to 1 alternate
@@ -237,9 +240,12 @@ function deduplicateAndPruneVersions(candidates, options = {}) {
                 const mod = detectModifier(variant.title) || 'original';
                 if (!seenMods.has(mod)) {
                     seenMods.add(mod);
-                    if ((artistCountMap.get(artistKey) || 0) < maxPerArtist) {
+                    const vSeen = Math.max(...artistKeys.map(k => artistCountMap.get(k) || 0), 0);
+                    if (vSeen < maxPerArtist) {
                         validCandidates.push(variant);
-                        artistCountMap.set(artistKey, (artistCountMap.get(artistKey) || 0) + 1);
+                        for (const k of artistKeys) {
+                            artistCountMap.set(k, (artistCountMap.get(k) || 0) + 1);
+                        }
                     }
                 }
             }
@@ -302,17 +308,24 @@ function scoreCandidate(candidate, userProfile, selectedSoFar = []) {
     const recentTrackKeys = new Set((userProfile.recentTrackKeys || []).map(k => k.toLowerCase()));
     const skippedTrackKeys = new Set((userProfile.skippedTrackKeys || []).map(k => k.toLowerCase()));
 
-    // 1. Artist Affinity
+    // 1. Source & Artist Affinity
     if (likedArtists.includes(candidateArtist) || topPlayedArtists.includes(candidateArtist)) {
         score += 3.5;
         explanations.push(`Favorite artist: ${candidate.artist}`);
-    } else if (seedArtists.includes(candidateArtist)) {
-        score += 2.5;
-        explanations.push(`Based on your interest in ${candidate.artist}`);
+    } else if (seedArtists.includes(candidateArtist) || candidate.source === 'seed_artist') {
+        score += 3.0;
+        explanations.push(`More from ${candidate.artist}`);
+    } else if (candidate.source === 'watch_next') {
+        // High confidence algorithmic relation from YouTube Watch Next graph
+        score += 2.6;
+        explanations.push(candidate.explanation || 'Related via music recommendation network');
+    } else if (candidate.source === 'related_search') {
+        score += 2.2;
+        explanations.push(candidate.explanation || 'Similar style music');
     } else {
-        // Discovery bonus: Introduce new, relevant artist
-        score += 2.0;
-        explanations.push(`Fresh discovery for your taste`);
+        // Unverified discovery candidate (do NOT outrank verified related tracks)
+        score += 0.2;
+        explanations.push('Discovery candidate');
     }
 
     // 2. Behavioral Signals
@@ -352,50 +365,124 @@ function scoreCandidate(candidate, userProfile, selectedSoFar = []) {
         s => cleanArtist(s.artist) === candidateArtist
     ).length;
     if (countOfThisArtistInRow === 1) {
-        score -= 3.0;
-    } else if (countOfThisArtistInRow >= 2) {
-        score -= 10.0; // Strict diversity: max 2 tracks per artist in a row
+        score -= 2.0; // Mild spacing to allow related artists to interleave
+    } else if (countOfThisArtistInRow === 2) {
+        score -= 4.5; // Stronger penalty for 3rd track
+    } else if (countOfThisArtistInRow >= 3) {
+        score -= 15.0; // Strict diversity: max 3 tracks per artist in Up Next
     }
 
-    // 7. Verified Music Catalog Bonus
-    if (candidate.provider === 'saavn') {
-        score += 1.0;
+    // 7. Verified Music Catalog Bonus (minor audio-quality tie-breaker only)
+    if (candidate.provider === 'saavn' && (seedArtists.includes(candidateArtist) || candidate.source === 'seed_artist')) {
+        score += 0.2;
     }
 
     return {
         score: Math.max(0, Number(score.toFixed(2))),
-        primaryExplanation: explanations[0] || 'Recommended discovery'
+        primaryExplanation: explanations[0] || 'Recommended music'
     };
 }
 
+const {
+    GENRE_FAMILIES,
+    GENRE_COMPATIBILITY_MATRIX,
+    extractArtistList,
+    buildTrackProfile,
+    checkEligibilityGate,
+    scoreTrackProfile,
+    computeAcousticSimilarity
+} = require('./music_intelligence');
+
 /**
  * Ranks a pool of candidates using greedy selection with real-time diversity constraints.
+ * Incorporates:
+ * 1. Strict genre and mood eligibility gates (incompatible styles rejected pre-scoring).
+ * 2. 0-100 weighted point scoring system (acoustic similarity 40, genre 25, mood/energy 20, affinity 15).
+ * 3. Multi-artist saturation and diversity constraints.
+ * 4. Transparent development diagnostics.
  */
 function rankRecommendations(candidates, userProfile = {}, limit = 20) {
-    if (!candidates || candidates.length === 0) return [];
+    if (!candidates || candidates.length === 0) {
+        const empty = [];
+        empty.diagnostics = {
+            totalCandidates: 0,
+            eligibleCount: 0,
+            rejectedCount: 0,
+            rejections: [],
+            returnedCount: 0
+        };
+        return empty;
+    }
+
+    const effectiveMaxPerArtist = userProfile.maxPerArtist || (userProfile.seedArtists?.length ? 3 : 2);
+
+    // Build or extract seed track profile
+    const seedProfile = userProfile.seedProfile || (
+        (userProfile.seedTitle || (userProfile.seedArtists && userProfile.seedArtists[0]))
+            ? buildTrackProfile({ title: userProfile.seedTitle || '', artist: (userProfile.seedArtists && userProfile.seedArtists[0]) || '' })
+            : null
+    );
 
     // Pre-filter non-music and deduplicate canonical songs
     const cleanCandidates = deduplicateAndPruneVersions(candidates, {
         allowAlternateVersions: false,
-        maxPerArtist: 2,
+        maxPerArtist: effectiveMaxPerArtist,
         seedKeysToExclude: new Set((userProfile.excludeKeys || []).map(k => k.toLowerCase()))
     });
 
-    const pool = [...cleanCandidates];
+    // Apply Phase 3: Genre and Mood Eligibility Gate
+    const eligiblePool = [];
+    const rejections = [];
+    for (const candidate of cleanCandidates) {
+        const candProfile = candidate.profile || buildTrackProfile(candidate);
+        candidate.profile = candProfile;
+
+        if (seedProfile) {
+            const gate = checkEligibilityGate(seedProfile, candProfile);
+            if (!gate.eligible) {
+                candidate.eligible = false;
+                candidate.rejectionReason = gate.rejectionReason;
+                rejections.push({
+                    title: candidate.title,
+                    artist: candidate.artist,
+                    reason: gate.rejectionReason
+                });
+                continue; // Rejected by gate! Never enters scoring or queue
+            }
+        }
+        candidate.eligible = true;
+        eligiblePool.push(candidate);
+    }
+
+    const pool = [...eligiblePool];
     const selected = [];
 
     while (pool.length > 0 && selected.length < limit) {
         let bestIndex = -1;
         let bestScore = -Infinity;
         let bestExplanation = '';
+        let bestBreakdown = null;
 
         for (let i = 0; i < pool.length; i++) {
             const candidate = pool[i];
-            const { score, primaryExplanation } = scoreCandidate(candidate, userProfile, selected);
+            let score, primaryExplanation, breakdown;
+
+            if (seedProfile) {
+                const result = scoreTrackProfile(candidate, seedProfile, userProfile, selected);
+                score = result.totalScore;
+                primaryExplanation = result.primaryExplanation;
+                breakdown = result.breakdown;
+            } else {
+                const result = scoreCandidate(candidate, userProfile, selected);
+                score = result.score;
+                primaryExplanation = result.primaryExplanation;
+            }
+
             if (score > bestScore) {
                 bestScore = score;
                 bestIndex = i;
                 bestExplanation = primaryExplanation;
+                bestBreakdown = breakdown;
             }
         }
 
@@ -404,12 +491,24 @@ function rankRecommendations(candidates, userProfile = {}, limit = 20) {
             selected.push({
                 ...chosen,
                 recommendationScore: bestScore,
-                recommendationReason: bestExplanation
+                recommendationReason: chosen.explanation || bestExplanation,
+                scoreBreakdown: bestBreakdown,
+                genre: chosen.profile?.primaryGenre,
+                mood: chosen.profile?.moodTags
             });
         } else {
             break;
         }
     }
+
+    selected.diagnostics = {
+        totalCandidates: candidates.length,
+        cleanCandidatesCount: cleanCandidates.length,
+        eligibleCount: eligiblePool.length,
+        rejectedCount: rejections.length,
+        rejections: rejections.slice(0, 15),
+        returnedCount: selected.length
+    };
 
     return selected;
 }
@@ -418,6 +517,7 @@ module.exports = {
     isMusicContent,
     cleanTitle,
     cleanArtist,
+    extractArtistList,
     extractCoreTitle,
     parseArtistAndTitle,
     extractCanonicalKey,
@@ -426,5 +526,10 @@ module.exports = {
     deduplicateAndPruneVersions,
     deduplicateForQueue,
     scoreCandidate,
-    rankRecommendations
+    rankRecommendations,
+    buildTrackProfile,
+    checkEligibilityGate,
+    scoreTrackProfile,
+    computeAcousticSimilarity,
+    GENRE_FAMILIES
 };

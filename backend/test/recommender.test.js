@@ -4,12 +4,18 @@ const {
     isMusicContent,
     cleanTitle,
     cleanArtist,
+    parseArtistAndTitle,
     extractCanonicalKey,
     detectModifier,
     deduplicateAndPruneVersions,
     deduplicateForQueue,
     scoreCandidate,
-    rankRecommendations
+    rankRecommendations,
+    buildTrackProfile,
+    checkEligibilityGate,
+    computeAcousticSimilarity,
+    scoreTrackProfile,
+    GENRE_FAMILIES
 } = require('../recommender');
 
 describe('LumiOne Recommender Module Tests', () => {
@@ -181,5 +187,241 @@ describe('LumiOne Recommender Module Tests', () => {
         // Distinct songs (Alan Walker - Faded and ZHU - Faded) must be kept!
         assert.equal(queueTracks.some(t => t.videoId === 'aw1'), true);
         assert.equal(queueTracks.some(t => t.videoId === 'zhu1'), true);
+    });
+
+    test('Up Next recommendation ranking prioritizes related artists over unrelated same-title tracks', () => {
+        // Seed song is Alan Walker - Faded
+        const seedTrack = { id: 'seed1', title: 'Alan Walker - Faded', artist: 'Alan Walker' };
+        const seedKey = extractCanonicalKey(seedTrack.title, seedTrack.artist);
+
+        const candidates = [
+            // Exact same title by unrelated artists (NOT musically related by artist affinity)
+            { id: 'tyga1', title: 'Tyga - Faded ft. Lil Wayne', artist: 'Tyga', duration: 200, provider: 'lumione' },
+            { id: 'tnskai1', title: 'TNS Kai - Faded', artist: 'TNS Kai', duration: 180, provider: 'lumione' },
+            { id: 'fay1', title: 'Fay - Faded', artist: 'Fay', duration: 195, provider: 'lumione' },
+            // Musically related tracks by the seed artist and similar electronic artists
+            { id: 'aw2', title: 'Alan Walker - Alone', artist: 'Alan Walker', duration: 210, provider: 'lumione' },
+            { id: 'aw3', title: 'Alan Walker - The Spectre', artist: 'Alan Walker', duration: 195, provider: 'lumione' },
+            { id: 'cs1', title: 'The Chainsmokers - Closer', artist: 'The Chainsmokers', duration: 245, provider: 'saavn' },
+            { id: 'marsh1', title: 'Marshmello - Happier', artist: 'Marshmello', duration: 215, provider: 'saavn' }
+        ];
+
+        const userProfile = {
+            seedArtists: ['Alan Walker'],
+            likedArtists: ['The Chainsmokers', 'Marshmello'],
+            recentTrackKeys: [seedKey],
+            excludeKeys: [seedKey]
+        };
+
+        const upNext = rankRecommendations(candidates, userProfile, 5);
+
+        // 1. Seed song itself must be excluded
+        assert.equal(upNext.some(t => t.id === 'seed1'), false);
+
+        // 2. Musically related songs by Alan Walker, The Chainsmokers, and Marshmello must rank high
+        const top3Artists = upNext.slice(0, 3).map(t => cleanArtist(t.artist));
+        assert.ok(top3Artists.includes('alan walker'));
+        assert.ok(top3Artists.includes('the chainsmokers') || top3Artists.includes('marshmello'));
+
+        // 3. Unrelated tracks merely sharing the title "Faded" by Tyga, TNS Kai, Fay must NOT dominate the Up Next queue!
+        const unrelatedSameTitleInTop3 = upNext.slice(0, 3).filter(t => ['tyga', 'tns kai', 'fay'].includes(cleanArtist(t.artist)));
+        assert.equal(unrelatedSameTitleInTop3.length, 0, 'Unrelated artists with same title should not be in top 3 Up Next');
+    });
+
+    test('P0 BUG REPRODUCTION: Hanuman Chalisa, Parvati, and unrelated Indian chart tracks are rejected when seed is Alan Walker - Faded', () => {
+        const seedKey = extractCanonicalKey('Faded', 'Alan Walker');
+
+        // Mixed candidate pool containing both genuine related tracks and the JioSaavn trending chart items
+        const mixedCandidates = [
+            // Genuine seed & related tracks
+            { id: 'aw_alone', title: 'Alone', artist: 'Alan Walker', duration: 164, provider: 'saavn', source: 'seed_artist' },
+            { id: 'aw_onmyway', title: 'On My Way', artist: 'Alan Walker, Sabrina Carpenter, Farruko', duration: 193, provider: 'saavn', source: 'seed_artist' },
+            { id: 'aw_ignite', title: 'Ignite', artist: 'Alan Walker, Julie Bergan, K-391', duration: 210, provider: 'saavn', source: 'seed_artist' },
+            { id: 'zayn_dusk', title: 'Dusk Till Dawn (feat. Sia)', artist: 'ZAYN', duration: 239, provider: 'lumione', source: 'watch_next' },
+            { id: 'pass_lethergo', title: 'Let Her Go', artist: 'Passenger', duration: 252, provider: 'lumione', source: 'watch_next' },
+            { id: 'cs_dontletme', title: 'Don\'t Let Me Down', artist: 'The Chainsmokers', duration: 208, provider: 'lumione', source: 'watch_next' },
+
+            // Unrelated Indian songs that previously entered the queue from JioSaavn trending charts
+            { id: 'hanuman_chalisa', title: 'Hanuman Chalisa', artist: 'Hariharan, Gulshan Kumar', duration: 580, provider: 'saavn', source: 'unrelated_chart' },
+            { id: 'parvati', title: 'Parvati', artist: 'Hansraj Raghuwanshi', duration: 245, provider: 'saavn', source: 'unrelated_chart' },
+            { id: 'tujh_mein_basi', title: 'Tujh Mein Basi Meri Jaan', artist: 'B Praak', duration: 280, provider: 'saavn', source: 'unrelated_chart' },
+            { id: 'casa_tupka', title: 'Casa Tupka Anthem', artist: 'MC Square', duration: 190, provider: 'saavn', source: 'unrelated_chart' }
+        ];
+
+        const userProfile = {
+            seedArtists: ['Alan Walker'],
+            recentTrackKeys: [seedKey],
+            excludeKeys: [seedKey]
+        };
+
+        const upNext = rankRecommendations(mixedCandidates, userProfile, 6);
+
+        // 1. All selected items must be from Alan Walker or verified related electronic/pop music
+        const selectedTitles = upNext.map(t => t.title);
+        assert.ok(selectedTitles.includes('Alone'));
+        assert.ok(selectedTitles.includes('On My Way'));
+        assert.ok(selectedTitles.includes('Dusk Till Dawn (feat. Sia)') || selectedTitles.includes('Let Her Go'));
+
+        // 2. NONE of the unrelated Indian songs must appear in the top 6 recommendations!
+        assert.equal(selectedTitles.includes('Hanuman Chalisa'), false, 'Hanuman Chalisa must NOT be recommended for Alan Walker');
+        assert.equal(selectedTitles.includes('Parvati'), false, 'Parvati must NOT be recommended for Alan Walker');
+        assert.equal(selectedTitles.includes('Tujh Mein Basi Meri Jaan'), false, 'Tujh Mein Basi Meri Jaan must NOT be recommended for Alan Walker');
+        assert.equal(selectedTitles.includes('Casa Tupka Anthem'), false, 'Casa Tupka Anthem must NOT be recommended for Alan Walker');
+    });
+
+    test('Empty candidate pool or network failure produces empty recommendation list, NOT arbitrary generic tracks', () => {
+        const seedKey = extractCanonicalKey('Faded', 'Alan Walker');
+        const userProfile = {
+            seedArtists: ['Alan Walker'],
+            recentTrackKeys: [seedKey],
+            excludeKeys: [seedKey]
+        };
+
+        // When all providers return empty or fail
+        const emptyResult = rankRecommendations([], userProfile, 10);
+        assert.equal(emptyResult.length, 0, 'Recommendation list must be empty instead of injected with fallback songs');
+    });
+
+    test('Missing artist falls back to title parsing without triggering arbitrary recommendations', () => {
+        const parsed = parseArtistAndTitle('Alan Walker - Faded (Official Music Video)', '');
+        assert.equal(parsed.artist, 'Alan Walker');
+        assert.equal(parsed.title, 'Faded (Official Music Video)');
+
+        const key = extractCanonicalKey('Alan Walker - Faded (Official Music Video)', '');
+        assert.equal(key, 'alan walker:::faded');
+    });
+
+    test('Embeat-inspired 7-dim acoustic vector calculation and cosine similarity', () => {
+        const p1 = buildTrackProfile({ title: 'Faded', artist: 'Alan Walker' });
+        const p2 = buildTrackProfile({ title: 'Alone', artist: 'Alan Walker' });
+        const pDevotional = buildTrackProfile({ title: 'Hanuman Chalisa', artist: 'Hariharan' });
+
+        assert.equal(p1.acousticVector.length, 7);
+        assert.equal(p2.acousticVector.length, 7);
+
+        // Acoustic similarity between two Alan Walker melodic electronic tracks should be high (> 0.85)
+        const simEdm = computeAcousticSimilarity(p1.acousticVector, p2.acousticVector);
+        assert.ok(simEdm > 0.85, `Expected EDM acoustic similarity > 0.85, got ${simEdm}`);
+
+        // Acoustic similarity between EDM and acoustic devotional should be significantly lower
+        const simDev = computeAcousticSimilarity(p1.acousticVector, pDevotional.acousticVector);
+        assert.ok(simDev < simEdm, `Expected devotional similarity (${simDev}) < EDM similarity (${simEdm})`);
+    });
+
+    test('Strict genre eligibility gate rejects devotional and regional desi tracks for EDM seed', () => {
+        const edmProfile = buildTrackProfile({ title: 'Faded', artist: 'Alan Walker' });
+        const devotionalProfile = buildTrackProfile({ title: 'Hanuman Chalisa', artist: 'Hariharan' });
+        const regionalProfile = buildTrackProfile({ title: 'Casa Tupka Anthem', artist: 'MC Square' });
+        const relatedProfile = buildTrackProfile({ title: 'Alone', artist: 'Alan Walker' });
+
+        const gateDev = checkEligibilityGate(edmProfile, devotionalProfile);
+        assert.equal(gateDev.eligible, false, 'Devotional must be rejected by gate for EDM seed');
+        assert.ok(gateDev.rejectionReason.includes('Incompatible genre family'));
+
+        const gateReg = checkEligibilityGate(edmProfile, regionalProfile);
+        assert.equal(gateReg.eligible, false, 'Regional Desi must be rejected by gate for EDM seed');
+
+        const gateEdm = checkEligibilityGate(edmProfile, relatedProfile);
+        assert.equal(gateEdm.eligible, true, 'EDM track must be eligible for EDM seed');
+    });
+
+    test('Sad/emotional seed preserves emotional mood & rejects upbeat dance or devotional tracks', () => {
+        const seedProfile = buildTrackProfile({ title: 'Let Her Go', artist: 'Passenger' });
+        const seedKey = extractCanonicalKey('Let Her Go', 'Passenger');
+
+        const candidates = [
+            { id: '1', title: 'Someone Like You', artist: 'Adele', duration: 285, source: 'watch_next' },
+            { id: '2', title: 'Channa Mereya', artist: 'Arijit Singh', duration: 289, source: 'watch_next' },
+            { id: '3', title: 'Dusk Till Dawn (feat. Sia)', artist: 'ZAYN', duration: 239, source: 'watch_next' },
+            { id: '4', title: 'Hanuman Chalisa', artist: 'Hariharan', duration: 580, source: 'unrelated_chart' }
+        ];
+
+        const userProfile = {
+            seedProfile,
+            seedTitle: 'Let Her Go',
+            seedArtists: ['Passenger'],
+            recentTrackKeys: [seedKey],
+            excludeKeys: [seedKey]
+        };
+
+        const upNext = rankRecommendations(candidates, userProfile, 3);
+        const titles = upNext.map(t => t.title);
+
+        assert.equal(titles.includes('Hanuman Chalisa'), false, 'Hanuman Chalisa must NOT be in Up Next for Passenger');
+        assert.ok(titles.includes('Someone Like You') || titles.includes('Channa Mereya') || titles.includes('Dusk Till Dawn (feat. Sia)'));
+    });
+
+    test('ScoreTrackProfile produces transparent 0-100 breakdown with all components', () => {
+        const seedProfile = buildTrackProfile({ title: 'Faded', artist: 'Alan Walker' });
+        const candidate = { id: 'aw1', title: 'Alone', artist: 'Alan Walker', duration: 164, source: 'seed_artist' };
+
+        const userProfile = {
+            seedProfile,
+            seedArtists: ['Alan Walker']
+        };
+
+        const result = scoreTrackProfile(candidate, seedProfile, userProfile, []);
+        assert.ok(result.totalScore >= 0 && result.totalScore <= 100);
+        assert.ok(result.breakdown);
+        assert.ok(result.breakdown.acousticSimilarity >= 0 && result.breakdown.acousticSimilarity <= 40);
+        assert.ok(result.breakdown.genreCompatibility >= 0 && result.breakdown.genreCompatibility <= 25);
+        assert.ok(result.breakdown.moodEnergyCompatibility >= 0 && result.breakdown.moodEnergyCompatibility <= 20);
+        assert.ok(result.breakdown.artistAndPreference >= 0 && result.breakdown.artistAndPreference <= 15);
+        assert.ok(result.primaryExplanation.length > 0);
+    });
+
+    test('Devotional seed: compatible devotional candidates; strictly rejects unrelated EDM', () => {
+        const seedProfile = buildTrackProfile({ title: 'Hanuman Chalisa', artist: 'Hariharan' });
+        const seedKey = extractCanonicalKey('Hanuman Chalisa', 'Hariharan');
+
+        const candidates = [
+            { id: '1', title: 'Shree Hanuman Chalisa', artist: 'Gulshan Kumar', duration: 580, source: 'seed_artist' },
+            { id: '2', title: 'Shiv Tandav Stotram', artist: 'Anuradha Paudwal', duration: 450, source: 'related' },
+            { id: '3', title: 'Aisi Lagi Lagan', artist: 'Anup Jalota', duration: 380, source: 'related' },
+            { id: '4', title: 'Levels', artist: 'Avicii', duration: 200, source: 'unrelated' },
+            { id: '5', title: 'Faded', artist: 'Alan Walker', duration: 213, source: 'unrelated' },
+            { id: '6', title: 'Alone', artist: 'Marshmello', duration: 210, source: 'unrelated' }
+        ];
+
+        const userProfile = {
+            seedProfile,
+            seedTitle: 'Hanuman Chalisa',
+            seedArtists: ['Hariharan'],
+            recentTrackKeys: [seedKey],
+            excludeKeys: [seedKey]
+        };
+
+        const upNext = rankRecommendations(candidates, userProfile, 4);
+        const titles = upNext.map(t => t.title);
+
+        assert.ok(titles.includes('Shree Hanuman Chalisa'));
+        assert.ok(titles.includes('Shiv Tandav Stotram'));
+        assert.equal(titles.includes('Levels'), false, 'Avicii must be rejected for Devotional seed');
+        assert.equal(titles.includes('Faded'), false, 'Alan Walker must be rejected for Devotional seed');
+        assert.equal(titles.includes('Alone'), false, 'Marshmello must be rejected for Devotional seed');
+    });
+
+    test('Hip-hop and ambient seeds maintain compatible candidates and reject mismatches', () => {
+        // Hip-hop
+        const hiphopSeed = buildTrackProfile({ title: 'HUMBLE.', artist: 'Kendrick Lamar' });
+        const hiphopCand = buildTrackProfile({ title: 'Lose Yourself', artist: 'Eminem' });
+        const devotionalCand = buildTrackProfile({ title: 'Hanuman Chalisa', artist: 'Hariharan' });
+
+        const gateHipHop = checkEligibilityGate(hiphopSeed, hiphopCand);
+        assert.equal(gateHipHop.eligible, true);
+
+        const gateDevHiphop = checkEligibilityGate(hiphopSeed, devotionalCand);
+        assert.equal(gateDevHiphop.eligible, false);
+
+        // Ambient
+        const ambientSeed = buildTrackProfile({ title: 'Music for Airports', artist: 'Brian Eno' });
+        const lofiCand = buildTrackProfile({ title: 'Coffee Beats', artist: 'Lofi Girl' });
+        const festivalEdmCand = buildTrackProfile({ title: 'Animals (Festival Mix)', artist: 'Martin Garrix' });
+
+        const gateAmbient = checkEligibilityGate(ambientSeed, lofiCand);
+        assert.equal(gateAmbient.eligible, true);
+
+        const gateEdmAmbient = checkEligibilityGate(ambientSeed, festivalEdmCand);
+        assert.equal(gateEdmAmbient.eligible, false);
     });
 });

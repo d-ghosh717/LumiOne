@@ -338,54 +338,314 @@ app.post('/api/recommendations', optionalFirebaseAuth, async (req, res) => {
     });
 });
 
-// ─── API: Related Tracks for Currently Playing Song ──────────────
-app.get('/api/recommendations/related', optionalFirebaseAuth, async (req, res) => {
-    const title = req.query.title || '';
-    const artist = req.query.artist || '';
+// ─── Direct YouTube Watch Next (Up Next / Related Music) ───────────
+function fetchYouTubeWatchNext(videoId, maxResults = 15) {
+    return new Promise((resolve) => {
+        if (!videoId || typeof videoId !== 'string') {
+            resolve([]);
+            return;
+        }
 
-    if (!title && !artist) {
-        return res.status(400).json({ error: 'At least title or artist must be provided.' });
+        const postData = JSON.stringify({
+            context: {
+                client: {
+                    clientName: 'WEB',
+                    clientVersion: '2.20240101.00.00',
+                    hl: 'en',
+                    gl: 'US'
+                }
+            },
+            videoId: videoId
+        });
+
+        const options = {
+            hostname: 'www.youtube.com',
+            port: 443,
+            path: '/youtubei/v1/next?prettyPrint=false',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData),
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            },
+            timeout: 8000
+        };
+
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    const secondaryResults = json?.contents?.twoColumnWatchNextResults?.secondaryResults?.secondaryResults?.results || [];
+                    const items = [];
+
+                    for (const r of secondaryResults) {
+                        const lockup = r?.lockupViewModel;
+                        if (lockup && lockup.contentId) {
+                            const vId = lockup.contentId;
+                            // Reject YouTube Mix / Radio playlist IDs (start with RD or not 11 chars)
+                            if (!vId || vId.startsWith('RD') || vId.length !== 11) continue;
+
+                            const title = lockup.metadata?.lockupMetadataViewModel?.title?.content || 'Unknown Title';
+                            if (title.startsWith('Mix - ')) continue;
+
+                            const metaRows = lockup.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows || [];
+                            const artist = metaRows[0]?.metadataParts?.[0]?.text?.content || 'Unknown Artist';
+
+                            // Parse duration from accessibility label (e.g. "Alan Walker - Alone 2 minutes, 44 seconds")
+                            const label = lockup.rendererContext?.accessibilityContext?.label || '';
+                            let durationSec = 210;
+                            const minMatch = label.match(/(\d+)\s*minute/i);
+                            const secMatch = label.match(/(\d+)\s*second/i);
+                            const hrMatch = label.match(/(\d+)\s*hour/i);
+                            if (minMatch || secMatch || hrMatch) {
+                                durationSec = ((hrMatch ? parseInt(hrMatch[1], 10) : 0) * 3600) +
+                                              ((minMatch ? parseInt(minMatch[1], 10) : 0) * 60) +
+                                              (secMatch ? parseInt(secMatch[1], 10) : 0);
+                            }
+
+                            if (isMusicVideo(title, artist, durationSec)) {
+                                items.push({
+                                    id: vId,
+                                    youtubeVideoId: vId,
+                                    title: title,
+                                    artist: artist,
+                                    thumbnail: `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`,
+                                    duration: durationSec,
+                                    durationFormatted: formatDuration(durationSec),
+                                    provider: 'lumione',
+                                    providerId: vId,
+                                    source: 'watch_next',
+                                    explanation: 'From YouTube Watch Next related mix'
+                                });
+                            }
+                        }
+
+                        const compact = r?.compactVideoRenderer;
+                        if (compact && compact.videoId) {
+                            const vId = compact.videoId;
+                            if (!vId || vId.startsWith('RD') || vId.length !== 11) continue;
+
+                            const title = compact.title?.simpleText || compact.title?.runs?.map(x => x.text).join('') || 'Unknown Title';
+                            if (title.startsWith('Mix - ')) continue;
+
+                            const artist = compact.shortBylineText?.runs?.map(x => x.text).join('') || 'Unknown Artist';
+                            const durationText = compact.lengthText?.simpleText || '3:00';
+                            const parts = durationText.split(':').map(Number);
+                            let durationSec = 180;
+                            if (parts.length === 2) durationSec = (parts[0] || 0) * 60 + (parts[1] || 0);
+                            else if (parts.length === 3) durationSec = (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+
+                            if (isMusicVideo(title, artist, durationSec)) {
+                                items.push({
+                                    id: vId,
+                                    youtubeVideoId: vId,
+                                    title: title,
+                                    artist: artist,
+                                    thumbnail: `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`,
+                                    duration: durationSec,
+                                    durationFormatted: durationText,
+                                    provider: 'lumione',
+                                    providerId: vId,
+                                    source: 'watch_next',
+                                    explanation: 'From YouTube Watch Next related mix'
+                                });
+                            }
+                        }
+
+                        if (items.length >= maxResults) break;
+                    }
+                    resolve(items);
+                } catch (e) {
+                    console.error('[WATCH_NEXT] Parse error:', e.message);
+                    resolve([]);
+                }
+            });
+        });
+
+        req.on('error', (err) => {
+            console.error('[WATCH_NEXT] Request error:', err.message);
+            resolve([]);
+        });
+        req.on('timeout', () => {
+            req.destroy();
+            resolve([]);
+        });
+        req.write(postData);
+        req.end();
+    });
+}
+
+async function fetchJioSaavnArtistSongs(artist, maxResults = 10) {
+    if (!artist) return [];
+    try {
+        const encoded = encodeURIComponent(`${artist} songs`);
+        const endpoint = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&cc=in&p=1&n=${maxResults}&q=${encoded}`;
+        const data = await fetchJsonUrl(endpoint);
+        const results = data?.results || [];
+        return results.map(s => {
+            let img = s.image || '';
+            if (img.includes('150x150')) img = img.replace('150x150', '500x500');
+            const durationSec = Number(s.duration) || 0;
+            return {
+                id: s.id,
+                youtubeVideoId: '',
+                title: cleanHtmlEntities(s.song || s.title || 'Unknown Title'),
+                artist: cleanHtmlEntities(s.primary_artists || s.singers || artist),
+                thumbnail: img,
+                duration: durationSec,
+                durationFormatted: formatDuration(durationSec),
+                provider: 'saavn',
+                providerId: s.id,
+                source: 'seed_artist',
+                explanation: `Popular track by ${artist}`
+            };
+        }).filter(item => isMusicVideo(item.title, item.artist, item.duration));
+    } catch (e) {
+        return [];
+    }
+}
+
+// ─── API: Related Tracks for Currently Playing Song (Up Next) ─────
+app.get('/api/recommendations/related', optionalFirebaseAuth, async (req, res) => {
+    const startTime = Date.now();
+    const rawTitle = req.query.title || '';
+    const rawArtist = req.query.artist || '';
+    const videoId = req.query.videoId || '';
+    const limit = Math.min(Math.max(Number(req.query.limit) || 12, 5), 25);
+
+    if (!rawTitle && !rawArtist && !videoId) {
+        return res.status(400).json({ error: 'At least title, artist, or videoId must be provided.' });
     }
 
-    console.log(`[RELATED] Finding related songs for '${title}' by '${artist}'`);
+    let { artist: effectiveArtist, title: effectiveTitle } = recommender.parseArtistAndTitle(rawTitle, rawArtist);
+    if (!effectiveArtist && rawArtist) effectiveArtist = rawArtist;
+    if (!effectiveTitle && rawTitle) effectiveTitle = rawTitle;
 
-    const seedKey = recommender.extractCanonicalKey(title, artist);
+    // Phase 2: Build structured TrackProfile for seed track
+    const seedProfile = recommender.buildTrackProfile({
+        title: effectiveTitle || rawTitle,
+        artist: effectiveArtist || rawArtist,
+        videoId,
+        durationSec: Number(req.query.duration) || 210
+    });
+
+    console.log(`[RELATED] Finding Up Next music for '${effectiveTitle}' by '${effectiveArtist}' (genre=${seedProfile.primaryGenre}, energy=${seedProfile.energy}, mood=${seedProfile.moodTags.join('/')}, videoId=${videoId})`);
+
+    const seedKey = recommender.extractCanonicalKey(effectiveTitle || rawTitle, effectiveArtist || rawArtist);
+    const candidatePromises = [];
+
+    // 1. YouTube Watch Next / algorithmic related videos if videoId present
+    if (videoId && videoId.length === 11 && !videoId.startsWith('RD')) {
+        candidatePromises.push(
+            fetchYouTubeWatchNext(videoId, 20).then(items =>
+                items.map(it => ({ ...it, source: 'watch_next', explanation: 'From YouTube Watch Next related mix' }))
+            )
+        );
+    }
+
+    // 2. Artist catalog queries
+    if (effectiveArtist) {
+        candidatePromises.push(
+            youtubeSearch(`${effectiveArtist} top songs official audio`, 10).then(items =>
+                items.map(it => ({ ...it, source: 'seed_artist', explanation: `Top track by ${effectiveArtist}` }))
+            )
+        );
+
+        // Only query JioSaavn when seed is from an Indian/Desi/Devotional catalog
+        const isIndianOrDevotional = [
+            recommender.GENRE_FAMILIES.BOLLYWOOD_DESI,
+            recommender.GENRE_FAMILIES.INDIAN_REGIONAL_DESI,
+            recommender.GENRE_FAMILIES.DEVOTIONAL_SPIRITUAL
+        ].includes(seedProfile.primaryGenre);
+
+        if (isIndianOrDevotional) {
+            candidatePromises.push(fetchJioSaavnArtistSongs(effectiveArtist, 10));
+        }
+    }
+
+    // 3. Related Artists queries (based on taxonomy linkages)
+    const relatedArtists = seedProfile.relatedArtists || [];
+    if (relatedArtists.length > 0) {
+        const topRelated = relatedArtists.slice(0, 3);
+        for (const relArtist of topRelated) {
+            candidatePromises.push(
+                youtubeSearch(`${relArtist} top hits official audio`, 6).then(items =>
+                    items.map(it => ({
+                        ...it,
+                        source: 'related_artist',
+                        explanation: `Similar artist: ${relArtist}`
+                    }))
+                )
+            );
+        }
+    }
+
+    // 4. Genre & Style queries based on seedProfile
+    const genreKeywords = (seedProfile.primaryGenre || 'music').replace(/_/g, ' ');
+    const primarySubgenre = (seedProfile.subgenres && seedProfile.subgenres[0]) || '';
+    candidatePromises.push(
+        youtubeSearch(`${genreKeywords} ${primarySubgenre} top songs official audio`, 8).then(items =>
+            items.map(it => ({
+                ...it,
+                source: 'related_search',
+                explanation: `Similar ${genreKeywords} music`
+            }))
+        )
+    );
+
+    // Notice: fetchJioSaavnCharts() is intentionally NOT included here.
+    // Up Next must contain strictly related music, never generic trending charts.
+
+    const settled = await Promise.allSettled(candidatePromises);
     const candidates = [];
-
-    // Search similar music in the same style/artist
-    const queries = [];
-    if (artist) queries.push(`${artist} similar songs music`);
-    if (title && artist) queries.push(`${artist} songs playlist`);
-    queries.push('trending music hits official audio');
-
-    try {
-        const searchPromises = queries.map(q => youtubeSearch(q, 10));
-        const searchResults = await Promise.all(searchPromises);
-        for (const tracks of searchResults) {
-            if (Array.isArray(tracks)) {
-                candidates.push(...tracks);
+    const sourceCounts = {};
+    for (const r of settled) {
+        if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+            for (const item of r.value) {
+                candidates.push(item);
+                sourceCounts[item.source || 'unknown'] = (sourceCounts[item.source || 'unknown'] || 0) + 1;
             }
         }
-    } catch (e) {
-        console.warn(`[RELATED] Search error: ${e.message}`);
     }
 
-    // Also pull verified chart tracks for candidate diversity
-    try {
-        const chartTracks = await fetchJioSaavnCharts();
-        if (chartTracks && chartTracks.length > 0) {
-            candidates.push(...chartTracks);
+    // Build user profile constraints
+    let recentKeys = [seedKey];
+    if (req.query.recentKeys) {
+        try {
+            const parsed = JSON.parse(req.query.recentKeys);
+            if (Array.isArray(parsed)) recentKeys.push(...parsed);
+        } catch (_) {
+            if (typeof req.query.recentKeys === 'string') {
+                recentKeys.push(...req.query.recentKeys.split(','));
+            }
         }
-    } catch (_) {}
+    }
 
-    // Exclude the seed song itself and penalize alternate versions of it
     const userProfile = {
-        seedArtists: [artist].filter(Boolean),
+        seedProfile,
+        seedTitle: effectiveTitle || rawTitle,
+        seedArtists: [effectiveArtist, rawArtist].filter(Boolean),
+        recentTrackKeys: recentKeys,
         excludeKeys: [seedKey]
     };
 
-    const ranked = recommender.rankRecommendations(candidates, userProfile, 12);
-    return res.json({ results: ranked });
+    const ranked = recommender.rankRecommendations(candidates, userProfile, limit);
+    const latencyMs = Date.now() - startTime;
+
+    return res.json({
+        seedProfile,
+        results: ranked,
+        diagnostics: {
+            latencyMs,
+            totalRetrieved: candidates.length,
+            candidateSourceCounts: sourceCounts,
+            ...(ranked.diagnostics || {})
+        },
+        totalCandidates: candidates.length,
+        returnedCount: ranked.length
+    });
 });
 
 // ─── API: Health Check ───────────────────────────────────────────
@@ -411,5 +671,5 @@ if (require.main === module) {
     });
 }
 
-module.exports = { app, isMusicVideo, fetchJioSaavnCharts, youtubeSearch, formatDuration, recommender };
+module.exports = { app, isMusicVideo, fetchJioSaavnCharts, youtubeSearch, fetchYouTubeWatchNext, fetchJioSaavnArtistSongs, formatDuration, recommender };
 

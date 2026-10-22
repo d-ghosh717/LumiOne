@@ -29,6 +29,7 @@ import com.lumione.player.data.HistoryManager
 import com.lumione.player.data.Playlist
 import com.lumione.player.data.PlaylistManager
 import com.lumione.player.queue.QueueManager
+import com.lumione.player.queue.QueueMode
 import com.lumione.player.queue.RepeatMode
 import com.lumione.player.queue.Track
 import com.lumione.player.search.SearchAuthException
@@ -40,6 +41,7 @@ import kotlinx.coroutines.*
 
 class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListener {
 
+    private val TAG = "MainActivity"
     private val searchEngine = SearchEngine()
     private val queueManager = QueueManager()
     private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -711,11 +713,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         chipWrapped.setOnClickListener { selectCategory(chipWrapped, "Best songs of the year") }
 
         // Section 1: "To get you started" Featured Carousel
-        featuredCarouselAdapter = FeaturedCarouselAdapter(mutableListOf()) { result, position ->
+        featuredCarouselAdapter = FeaturedCarouselAdapter(mutableListOf()) { result, _ ->
             val track = result.toTrack()
-            val globalIndex = allLoadedResults.indexOfFirst { it.videoId == result.videoId }.coerceAtLeast(0)
-            val queue = buildQueueFromResults(allLoadedResults, globalIndex)
-            setQueueAndPlay(queue, 0, track)
+            playSingleSongWithRadio(track)
         }
         homeFeaturedCarousel.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         PagerSnapHelper().attachToRecyclerView(homeFeaturedCarousel)
@@ -729,11 +729,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         }
 
         // Section 2: "Popular songs" Horizontal Reel
-        popularSongAdapter = PopularSongAdapter(mutableListOf()) { result, position ->
+        popularSongAdapter = PopularSongAdapter(mutableListOf()) { result, _ ->
             val track = result.toTrack()
-            val globalIndex = allLoadedResults.indexOfFirst { it.videoId == result.videoId }.coerceAtLeast(0)
-            val queue = buildQueueFromResults(allLoadedResults, globalIndex)
-            setQueueAndPlay(queue, 0, track)
+            playSingleSongWithRadio(track)
         }
         homePopularSongsList.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         homePopularSongsList.adapter = popularSongAdapter
@@ -749,7 +747,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         homeRecentlyPlayedAdapter = RecentlyPlayedAdapter(mutableListOf()) { track ->
             val historyTracks = historyManager.getHistory().map { it.track }
             val index = historyTracks.indexOfFirst { it.videoId == track.videoId }.coerceAtLeast(0)
-            setQueueAndPlay(historyTracks, index, track)
+            setQueueAndPlay(historyTracks, index, track, QueueMode.PLAYLIST_OR_FAVORITES)
         }
         homeRecentlyPlayedList.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         homeRecentlyPlayedList.adapter = homeRecentlyPlayedAdapter
@@ -776,11 +774,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         }
 
         // Section 5: Discovery Feed (Trending Tracks List)
-        homeTrackAdapter = TrackAdapter(mutableListOf()) { result, position ->
+        homeTrackAdapter = TrackAdapter(mutableListOf()) { result, _ ->
             val track = result.toTrack()
-            val globalIndex = allLoadedResults.indexOfFirst { it.videoId == result.videoId }.coerceAtLeast(0)
-            val queue = buildQueueFromResults(allLoadedResults, globalIndex)
-            setQueueAndPlay(queue, 0, track)
+            playSingleSongWithRadio(track)
         }
         homeTrendingList.layoutManager = LinearLayoutManager(this)
         homeTrendingList.isNestedScrollingEnabled = false
@@ -917,10 +913,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     // ─── Search Screen ────────────────────────────────────────────────────────
 
     private fun setupSearchScreen() {
-        searchTrackAdapter = TrackAdapter(mutableListOf()) { result, position ->
+        searchTrackAdapter = TrackAdapter(mutableListOf()) { result, _ ->
             val track = result.toTrack()
-            val queue = buildQueueFromResults(searchTrackAdapter.results, position)
-            setQueueAndPlay(queue, 0, track)
+            playSingleSongWithRadio(track)
         }
         searchTabResultsList.layoutManager = LinearLayoutManager(this)
         searchTabResultsList.adapter = searchTrackAdapter
@@ -1038,7 +1033,21 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         libraryTrackAdapter = QueueTrackAdapter(
             tracks = mutableListOf(),
             onTrackClick = { track, index ->
-                playTrack(track)
+                when (currentLibraryTab) {
+                    1 -> {
+                        val favorites = favoritesManager.getFavorites()
+                        setQueueAndPlay(favorites, index, track, QueueMode.PLAYLIST_OR_FAVORITES)
+                    }
+                    2 -> {
+                        val historyTracks = historyManager.getHistory().map { it.track }
+                        setQueueAndPlay(historyTracks, index, track, QueueMode.PLAYLIST_OR_FAVORITES)
+                    }
+                    3 -> {
+                        playbackService?.queueManager?.jumpTo(index)?.let { playTrack(it) }
+                            ?: queueManager.jumpTo(index)?.let { playTrack(it) }
+                    }
+                    else -> playTrack(track)
+                }
             },
             onRemoveClick = { track, index ->
                 when (currentLibraryTab) {
@@ -1769,7 +1778,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             onTrackClick = { track, index ->
                 val playlist = currentDetailPlaylist
                 if (playlist != null) {
-                    setQueueAndPlay(playlist.tracks, index, track)
+                    setQueueAndPlay(playlist.tracks, index, track, QueueMode.PLAYLIST_OR_FAVORITES)
                 }
             },
             onRemoveClick = { track, _ ->
@@ -1903,7 +1912,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             return
         }
         val tracks = if (shuffle) playlist.tracks.shuffled() else playlist.tracks
-        setQueueAndPlay(tracks, 0, tracks.first())
+        setQueueAndPlay(tracks, 0, tracks.first(), QueueMode.PLAYLIST_OR_FAVORITES)
     }
 
     private fun showCreatePlaylistDialog(initialTrack: Track? = null, onCreated: ((Playlist) -> Unit)? = null) {
@@ -2147,11 +2156,116 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     // ─── Playback Coordination ────────────────────────────────────────────────
 
-    private fun setQueueAndPlay(queue: List<Track>, startIndex: Int, trackToPlay: Track) {
-        queueManager.setQueue(queue, startIndex)
-        playbackService?.queueManager?.setQueue(queue, startIndex)
+    private fun setQueueAndPlay(
+        queue: List<Track>,
+        startIndex: Int,
+        trackToPlay: Track,
+        mode: QueueMode = QueueMode.RADIO
+    ) {
+        queueManager.setQueue(queue, startIndex, mode)
+        playbackService?.queueManager?.setQueue(queue, startIndex, mode)
         playTrack(trackToPlay)
         showFullPlayer()
+    }
+
+    private var currentRadioSeedId: String = ""
+    private var radioJob: Job? = null
+
+    private fun playSingleSongWithRadio(track: Track) {
+        setQueueAndPlay(listOf(track), 0, track, QueueMode.RADIO)
+        fetchAndPopulateRelatedQueue(track)
+    }
+
+    private fun fetchAndPopulateRelatedQueue(seedTrack: Track) {
+        radioJob?.cancel()
+        currentRadioSeedId = seedTrack.videoId
+        radioJob = mainScope.launch {
+            try {
+                val likedTracks = favoritesManager.getFavorites()
+                val likedArtists = likedTracks.map { it.artist }.filter { it.isNotBlank() }.distinct()
+                val topArtists = historyManager.getTopArtists(5)
+                val skippedArtists = historyManager.getSkippedArtists()
+                val recentKeys = historyManager.getHistory().take(15).map { 
+                    TrackNormalizer.extractCanonicalKey(it.track.title, it.track.artist) 
+                }
+                val likedKeys = likedTracks.map { TrackNormalizer.extractCanonicalKey(it.title, it.artist) }
+                val idToken = withTimeoutOrNull(2000) { authManager.getIdToken() }
+
+                val relatedResults = searchEngine.getRelatedTracks(
+                    seedTrack = seedTrack,
+                    idToken = idToken,
+                    seedArtists = listOf(seedTrack.artist),
+                    likedArtists = likedArtists,
+                    topPlayedArtists = topArtists,
+                    likedTrackKeys = likedKeys,
+                    recentTrackKeys = recentKeys,
+                    skippedArtists = skippedArtists,
+                    limit = 15
+                )
+
+                val activeTrack = playbackService?.queueManager?.currentTrack() ?: queueManager.currentTrack()
+                if (currentRadioSeedId == seedTrack.videoId && (activeTrack == null || activeTrack.videoId == seedTrack.videoId)) {
+                    val upcoming = relatedResults.map { it.toTrack() }
+                    queueManager.appendUpcomingTracks(upcoming)
+                    playbackService?.queueManager?.appendUpcomingTracks(upcoming)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load Up Next related tracks for '${seedTrack.title}': ${e.message}")
+            }
+        }
+    }
+
+    private var isAutoplayReplenishing = false
+
+    private fun checkAutoplayReplenishment(track: Track) {
+        val qm = playbackService?.queueManager ?: queueManager
+        if (qm.queueMode != QueueMode.RADIO) return
+        if (qm.remainingTracksCount() <= 2 && !isAutoplayReplenishing) {
+            isAutoplayReplenishing = true
+            mainScope.launch {
+                try {
+                    val currentQueue = qm.queue.value ?: emptyList()
+                    val currentQueueKeys = currentQueue.map { 
+                        TrackNormalizer.extractCanonicalKey(it.title, it.artist) 
+                    }.toSet()
+
+                    val likedTracks = favoritesManager.getFavorites()
+                    val likedArtists = likedTracks.map { it.artist }.filter { it.isNotBlank() }.distinct()
+                    val topArtists = historyManager.getTopArtists(5)
+                    val skippedArtists = historyManager.getSkippedArtists()
+                    val recentKeys = (historyManager.getHistory().take(15).map { 
+                        TrackNormalizer.extractCanonicalKey(it.track.title, it.track.artist) 
+                    } + currentQueueKeys).distinct()
+                    val likedKeys = likedTracks.map { TrackNormalizer.extractCanonicalKey(it.title, it.artist) }
+                    val idToken = withTimeoutOrNull(2000) { authManager.getIdToken() }
+
+                    val related = searchEngine.getRelatedTracks(
+                        seedTrack = track,
+                        idToken = idToken,
+                        seedArtists = listOf(track.artist),
+                        likedArtists = likedArtists,
+                        topPlayedArtists = topArtists,
+                        likedTrackKeys = likedKeys,
+                        recentTrackKeys = recentKeys,
+                        skippedArtists = skippedArtists,
+                        limit = 10
+                    )
+
+                    val newTracks = related.map { it.toTrack() }.filter { cand ->
+                        !currentQueueKeys.contains(TrackNormalizer.extractCanonicalKey(cand.title, cand.artist))
+                    }
+
+                    if (newTracks.isNotEmpty()) {
+                        queueManager.appendUpcomingTracks(newTracks)
+                        playbackService?.queueManager?.appendUpcomingTracks(newTracks)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Autoplay replenishment failed: ${e.message}")
+                } finally {
+                    isAutoplayReplenishing = false
+                }
+            }
+        }
     }
 
     private fun playTrack(track: Track) {
@@ -2222,6 +2336,8 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 historyManager.recordTrack(track)
                 updateLikeButtonState(track)
                 if (currentNavTab == 2) refreshLibraryTab()
+
+                checkAutoplayReplenishment(track)
             }
         }
     }
@@ -2468,7 +2584,9 @@ fun SearchResult.toTrack() = Track(
     streamUrl = streamUrl,
     provider = provider,
     providerId = providerId,
-    youtubeVideoId = videoId
+    youtubeVideoId = videoId,
+    recommendationReason = recommendationReason,
+    source = source
 )
 
 // ─── Recently Played Horizontal Reel Adapter ─────────────────────────────────

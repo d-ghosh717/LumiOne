@@ -116,4 +116,48 @@ class QueueManagerTest {
         assertEquals(2, queueManager.queue.value?.size)
         assertEquals("t2", queueManager.queue.value?.get(1)?.videoId)
     }
+
+    @Test
+    fun testManualPlayNextAndAddToQueuePreservedDuringRefresh() {
+        val seed = Track("seed", "Seed Song", "Seed Artist")
+        queueManager.setQueue(listOf(seed), 0, com.lumione.player.queue.QueueMode.RADIO)
+
+        // Initial radio population
+        val radio1 = Track("r1", "Radio Song 1", "Artist R1")
+        val radio2 = Track("r2", "Radio Song 2", "Artist R2")
+        queueManager.appendUpcomingTracks(listOf(radio1, radio2))
+        assertEquals(3, queueManager.queue.value?.size)
+
+        // User manually queues a song next (Play next)
+        val userManualNext = Track("user_manual_1", "User Selected Song", "Manual Artist")
+        queueManager.insertNext(userManualNext)
+        assertTrue(queueManager.queue.value?.get(1)?.isManual == true)
+        assertEquals("user_manual_1", queueManager.queue.value?.get(1)?.videoId)
+
+        // Queue is refreshed with new radio recommendations
+        val freshRadio1 = Track("r3", "Fresh Radio 3", "Artist R3")
+        val freshRadio2 = Track("r4", "Fresh Radio 4", "Artist R4")
+        queueManager.replaceGeneratedUpcomingTracks(listOf(freshRadio1, freshRadio2))
+
+        val updatedQueue = queueManager.queue.value ?: emptyList()
+        // The user manual track must NOT be wiped out!
+        assertTrue("User manually added track must be preserved on refresh", updatedQueue.any { it.videoId == "user_manual_1" })
+        assertEquals("User manual track should remain next in queue", "user_manual_1", updatedQueue[1].videoId)
+    }
+
+    @Test
+    fun testPlaylistModePreservesExplicitOrderAndDistinguishedFromRadio() {
+        val tracks = listOf(
+            Track("p1", "Playlist Track 1", "Artist A"),
+            Track("p2", "Playlist Track 2", "Artist B"),
+            Track("p3", "Playlist Track 3", "Artist C")
+        )
+        queueManager.setQueue(tracks, 0, com.lumione.player.queue.QueueMode.PLAYLIST_OR_FAVORITES)
+
+        assertEquals(com.lumione.player.queue.QueueMode.PLAYLIST_OR_FAVORITES, queueManager.queueMode)
+        assertEquals(3, queueManager.queue.value?.size)
+        assertEquals("p1", queueManager.currentTrack()?.videoId)
+        assertEquals("p2", queueManager.peekNext()?.videoId)
+        assertFalse(queueManager.queueMode == com.lumione.player.queue.QueueMode.RADIO)
+    }
 }

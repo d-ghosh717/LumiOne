@@ -81,6 +81,20 @@ async function optionalFirebaseAuth(req, res, next) {
 }
 
 const webPath = path.join(__dirname, '..');
+app.get('/firebase-config.js', (_req, res) => {
+    const clientConfig = {
+        apiKey: process.env.FIREBASE_WEB_API_KEY || '',
+        authDomain: process.env.FIREBASE_AUTH_DOMAIN || '',
+        projectId: process.env.FIREBASE_PROJECT_ID || '',
+        appId: process.env.FIREBASE_WEB_APP_ID || '',
+        databaseURL: process.env.FIREBASE_DATABASE_URL || undefined,
+        storageBucket: process.env.FIREBASE_STORAGE_BUCKET || undefined,
+        messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || undefined
+    };
+    res.set('Cache-Control', 'no-store');
+    res.type('application/javascript').send(`window.LUMIONE_FIREBASE_CONFIG = ${JSON.stringify(clientConfig)};`);
+});
+app.use('/assets', express.static(path.join(webPath, 'public', 'assets')));
 app.use(express.static(webPath));
 
 const recommender = require('./recommender');

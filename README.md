@@ -30,7 +30,7 @@ The interface keeps things deliberately minimal: a black canvas, cyan-blue accen
 - **Responsive UI** — desktop layout with a compact navigation experience for smaller screens.
 - **Firebase authentication** — authenticated API requests send the Firebase ID token as `Authorization: Bearer <token>`.
 
-> **Playback note:** a search result must include a usable YouTube video ID to be playable. Metadata-only results cannot start playback.
+> **Playback note:** trending can return catalog records without YouTube IDs. The web client searches the existing backend, requires matching track title and artist, and then uses the existing player. It will not play a loosely matched result.
 
 ## Interface
 
@@ -58,7 +58,7 @@ flowchart TD
 | `index.html` | App shell, navigation, and script loading |
 | `style.css` | Responsive black-and-cyan interface |
 | `script.js` | Client-side navigation, player UI, and API integration |
-| `firebase-config.js` | Local Firebase Web client configuration |
+| `/firebase-config.js` | Runtime Firebase Web client configuration served from backend environment variables |
 | `firebase-config.example.js` | Safe configuration template |
 | `backend/server.js` | Express server, API routes, and authentication verification |
 | `backend/recommender.js` | Recommendation and music-ranking logic |
@@ -71,8 +71,13 @@ flowchart TD
 From the repository root:
 
 ```bash
-npm --prefix backend install
-npm --prefix backend start
+cp backend/.env.example backend/.env
+cd backend
+set -a
+source .env
+set +a
+npm install
+npm start
 ```
 
 Then open [http://localhost:3000](http://localhost:3000).
@@ -84,12 +89,16 @@ The Express server serves the web client and its API from the same origin. Use t
 1. Open the Firebase project used by LumiOne.
 2. Enable the sign-in provider used by the app (Google sign-in, if configured).
 3. Add `localhost` and your deployed hostname to **Firebase Authentication → Settings → Authorized domains**.
-4. Configure the Firebase Web app values in the local `firebase-config.js`, using `firebase-config.example.js` as a template.
+4. Set `FIREBASE_WEB_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_PROJECT_ID`, and `FIREBASE_WEB_APP_ID` in `backend/.env` locally or in the Render backend service environment. Optional client values are `FIREBASE_DATABASE_URL`, `FIREBASE_STORAGE_BUCKET`, and `FIREBASE_MESSAGING_SENDER_ID`.
 5. Ensure the existing Firestore security rules restrict users to their own data.
 
 The Firebase Web configuration is client-side configuration and will be visible in the browser. **Never put service-account JSON, private keys, ID tokens, or other server secrets in frontend files or Git.** Restrict API keys appropriately in Google Cloud.
 
-For production, set backend-only secrets through the hosting provider's environment configuration rather than committing them to the repository.
+The Firebase Web API key is public browser configuration and will still be visible to users; restrict it to the needed Firebase APIs and web domains in Google Cloud. The server reads the client configuration at `/firebase-config.js`. Keep Admin SDK service-account credentials in server-only environment variables and never commit them.
+
+## Trending and empty Home behavior
+
+Search continues to include Trending. Home shows a compact trending preview only when there is no selected playable track in a loading, buffering, paused, or playing state. Failed playback and idle state restore discovery.
 
 ## Account sync and recommendation behavior
 
@@ -120,7 +129,7 @@ The production website is:
 
 **https://lumione.onrender.com**
 
-The current Express server serves the static web client and API from the same service. Confirm the Render service uses the intended GitHub repository and `web` branch, and configure any required backend environment variables in Render. Do not commit production secrets.
+The current Express server serves the static web client and API from the same service. Confirm the Render service uses the intended GitHub repository and `web` branch. Configure the Firebase variables listed above and any backend-only credentials in the Render environment. Do not commit production secrets.
 
 After deployment, verify sign-in, search, trending playback, queue actions, and library access on the live domain.
 

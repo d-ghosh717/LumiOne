@@ -5,7 +5,12 @@ backend/node_modules/
 # Environment variables & secrets
 .env
 .env.*
+!.env.example
+!backend/.env.example
 *.local
+service-account*.json
+*-service-account*.json
+firebase-adminsdk-*.json
 
 # Logs
 *.log

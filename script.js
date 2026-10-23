@@ -12,6 +12,7 @@ const ui = {
   search: $('search-input'),
   searchButton: $('search-button'), discoveryStatus: $('discovery-status'),
   results: $('results-list'), queue: $('queue-list'), queuePreview: $('queue-preview-list'), queueEmpty: $('queue-empty'),
+  homeDiscovery: $('home-discovery'), homeTrending: $('home-trending-list'), homeTrendingStatus: $('home-trending-status'),
   fullQueueEmpty: $('full-queue-empty'), fullQueueCount: $('full-queue-count'),
   queueCount: $('queue-count'), recommendations: $('recommendation-list'),
   recommendationEmpty: $('recommendation-empty'), title: $('track-title'), artist: $('track-artist'),
@@ -35,6 +36,8 @@ let youtubeApiReady = false;
 let youtubeReady = false;
 let queue = [];
 let currentIndex = -1;
+let playerStatus = 'idle';
+let trendingTracks = [];
 const queueMode = 'radio';
 const PREFERENCES_KEY = 'lumione-player-preferences';
 const preferences = loadPreferences();
@@ -61,9 +64,9 @@ function initializeAuth() {
   });
   if (missingConfig) {
     updateSessionUi(null);
-    const message = 'Firebase Web configuration is missing. Add the public web app settings to firebase-config.js.';
+    const message = 'Firebase Web configuration is missing. Set the public Firebase Web variables in the backend environment.';
     ui.authState.textContent = message;
-    ui.authFeedback.textContent = 'See firebase-config.example.js for the required fields.';
+    ui.authFeedback.textContent = 'Set FIREBASE_WEB_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID, and FIREBASE_WEB_APP_ID.';
     ui.discoveryStatus.textContent = 'SIGN IN REQUIRED · Configure Firebase Web sign-in, then sign in to search and load trending music.';
     return;
   }
@@ -95,12 +98,17 @@ function initializeAuth() {
           ui.recommendations.replaceChildren();
           ui.recommendationEmpty.hidden = false;
           ui.recommendationEmpty.textContent = 'Play a track to load related music.';
+          playerStatus = 'idle';
         }
         ui.discoveryStatus.textContent = 'SIGN IN REQUIRED · Sign in to search and load trending music.';
+        ui.homeTrendingStatus.textContent = 'SIGN IN REQUIRED · Sign in to load trending music.';
         ui.results.replaceChildren();
+        trendingTracks = [];
+        renderTracks(ui.homeTrending, [], 'home-results');
         libraryData = { history: [], liked: [], playlists: [] };
         renderLibrary();
       }
+      updateHomeDiscovery();
     });
   } catch (error) {
     ui.authState.textContent = `Firebase could not initialize: ${error.message}`;
@@ -169,15 +177,19 @@ async function parseResponse(response) {
 }
 
 function trackFrom(raw) {
-  const videoId = String(raw.youtubeVideoId || raw.id || raw.videoId || raw.providerId || '');
+  const provider = String(raw.provider || 'lumione').toLowerCase();
+  const catalogId = String(raw.providerId || raw.id || raw.videoId || '');
+  const candidateVideoId = raw.youtubeVideoId || raw.videoId ||
+    (['saavn', 'jiosaavn'].includes(provider) ? '' : raw.id || raw.providerId || '');
+  const videoId = isPlayableVideoId(String(candidateVideoId || '')) ? String(candidateVideoId) : '';
   return {
     id: videoId,
     title: String(raw.title || 'Unknown track'),
     artist: String(raw.artist || 'Unknown artist'),
     duration: Number(raw.duration) || durationSeconds(raw.durationFormatted),
     durationFormatted: String(raw.durationFormatted || formatTime(Number(raw.duration) || 0)),
-    provider: String(raw.provider || 'lumione'),
-    providerId: String(raw.providerId || raw.id || raw.videoId || videoId),
+    provider,
+    providerId: catalogId || videoId,
     youtubeVideoId: videoId,
     durationMs: Number(raw.durationMs) || (Number(raw.duration) || durationSeconds(raw.durationFormatted)) * 1000,
     thumbnailUrl: String(raw.thumbnailUrl || ''),
@@ -245,11 +257,13 @@ function renderTracks(target, tracks, kind) {
     return;
   }
   tracks.forEach((track, index) => {
-    const playable = Boolean(track.id && /^[\w-]{11}$/.test(track.id));
+    const playable = isPlayableVideoId(track.id);
+    const resolvable = kind === 'results' || kind === 'home-results';
+    const canPlay = playable || (resolvable && hasTrackIdentity(track));
     const row = document.createElement('li');
     const queueIndex = Number.isInteger(track.queueIndex) ? track.queueIndex : -1;
-    row.className = `track-row${kind === 'queue' && queueIndex === currentIndex ? ' current' : ''}${playable ? '' : ' unplayable'}`;
-    row.title = playable ? 'Track actions' : 'This metadata result has no browser-playable video ID';
+    row.className = `track-row${kind === 'queue' && queueIndex === currentIndex ? ' current' : ''}${canPlay ? '' : ' unplayable'}`;
+    row.title = playable ? 'Track actions' : canPlay ? 'Resolve this catalog track through music search before playback' : 'This metadata result cannot be played';
     const fields = [
       makeCell('track-number', String(index + 1).padStart(2, '0')),
       makeCell('track-name', track.title),
@@ -264,14 +278,14 @@ function renderTracks(target, tracks, kind) {
       else actions.append(actionButton('PLAY', () => playQueueIndex(queueIndex)));
       if (queueIndex >= 0 && queueIndex !== currentIndex) actions.append(actionButton('REMOVE', () => removeQueueTrack(queueIndex)));
     } else if (kind === 'liked' && playable) {
-      actions.append(actionButton('PLAY', () => startTrackSelection(track)));
+      actions.append(actionButton('PLAY', () => playTrack(track)));
       actions.append(actionButton('UNLIKE', () => toggleLike(track)));
     } else if (kind === 'playlist-track' && playable) {
-      actions.append(actionButton('PLAY', () => startTrackSelection(track)));
+      actions.append(actionButton('PLAY', () => playTrack(track)));
       actions.append(actionButton('REMOVE', () => removeFromPlaylist(track)));
-    } else if (playable) {
-      actions.append(actionButton('PLAY', () => startTrackSelection(track)));
-      actions.append(actionButton('QUEUE', () => addToQueue(track)));
+    } else if (canPlay) {
+      actions.append(actionButton('PLAY', () => playTrack(track)));
+      if (playable) actions.append(actionButton('QUEUE', () => addToQueue(track)));
       if (signedInUser) actions.append(actionButton(isLiked(track) ? 'LIKED' : 'LIKE', () => toggleLike(track)));
       if (signedInUser && libraryData.playlists.length) actions.append(actionButton('LIST', () => addTrackToPlaylist(track)));
     } else actions.textContent = '—';
@@ -311,6 +325,74 @@ function canonicalKey(track) {
   return `${track.artist}`.toLowerCase().replace(/[^a-z0-9]+/g, '') + ':::' + `${track.title}`.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+function isPlayableVideoId(id) {
+  return Boolean(id && /^[\w-]{11}$/.test(id));
+}
+
+function hasTrackIdentity(track) {
+  return Boolean(track?.title && track.title !== 'Unknown track' && track?.artist && track.artist !== 'Unknown artist');
+}
+
+function updateHomeDiscovery() {
+  const selectedTrack = queue[currentIndex];
+  const activeSelection = Boolean(selectedTrack && isPlayableVideoId(selectedTrack.id) &&
+    !['idle', 'failed', 'ended'].includes(playerStatus));
+  ui.homeDiscovery.hidden = currentView !== 'home' || activeSelection;
+}
+
+function normalizeMatchText(value) {
+  return String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+}
+
+function matchesTrendingSearch(trendingTrack, candidate) {
+  const wantedTitle = normalizeMatchText(trendingTrack.title);
+  const candidateTitle = normalizeMatchText(candidate.title);
+  const wantedArtist = normalizeMatchText(trendingTrack.artist);
+  const candidateArtist = normalizeMatchText(`${candidate.artist} ${candidate.title}`);
+  if (!wantedTitle || !wantedArtist || !candidateTitle || !isPlayableVideoId(candidate.id)) return false;
+  const titleMatches = candidateTitle === wantedTitle || candidateTitle.startsWith(`${wantedTitle} `) ||
+    candidateTitle.includes(` ${wantedTitle} `);
+  const artistAliases = wantedArtist.split(/\s+(?:feat|ft|featuring|and|x)\s+|,\s*/).filter((artist) => artist.length > 2);
+  return titleMatches && artistAliases.some((artist) => candidateArtist.includes(artist));
+}
+
+async function playTrack(track) {
+  if (isPlayableVideoId(track?.id)) return startTrackSelection(track);
+  if (!signedInUser) {
+    ui.note.textContent = 'Sign in to resolve and play this trending track.';
+    ui.discoveryStatus.textContent = 'SIGN IN REQUIRED · Sign in to play trending music.';
+    return false;
+  }
+  if (!hasTrackIdentity(track)) {
+    ui.note.textContent = 'This result is missing a track title or artist and cannot be resolved safely.';
+    return false;
+  }
+  ui.note.textContent = `Finding a playable match for “${track.title}”…`;
+  try {
+    const data = await api(`/api/search?q=${encodeURIComponent(`${track.title} ${track.artist}`)}`, {}, true);
+    const match = (data.results || []).map(trackFrom).find((candidate) => matchesTrendingSearch(track, candidate));
+    if (!match) throw new Error('No title and artist match with a playable video was found.');
+    const resolved = {
+      ...match,
+      title: track.title,
+      artist: track.artist,
+      duration: track.duration || match.duration,
+      durationFormatted: track.durationFormatted || match.durationFormatted,
+      durationMs: track.durationMs || match.durationMs,
+      provider: track.provider,
+      providerId: track.providerId || match.providerId,
+      youtubeVideoId: match.id,
+      id: match.id
+    };
+    return await startTrackSelection(resolved);
+  } catch (error) {
+    ui.note.textContent = `Could not play this trending track: ${error.message}`;
+    ui.homeTrendingStatus.textContent = `PLAYBACK UNAVAILABLE · ${track.title}: ${error.message}`;
+    return false;
+  }
+}
+
 function addToQueue(track, manual = true) {
   if (!track?.id || !/^[\w-]{11}$/.test(track.id)) return;
   const seen = new Set(queue.map(canonicalKey));
@@ -343,7 +425,7 @@ function removeQueueTrack(index) {
 }
 
 function startTrack(track, options = {}) {
-  if (!track.id || !/^[\w-]{11}$/.test(track.id)) {
+  if (!isPlayableVideoId(track.id)) {
     ui.note.textContent = 'This result has no playable YouTube video ID. It remains available as metadata only.';
     return Promise.resolve(false);
   }
@@ -355,6 +437,8 @@ function startTrack(track, options = {}) {
       pending.timer = setTimeout(() => {
         if (pendingPlaybackSelection !== pending) return;
         pendingPlaybackSelection = null;
+        playerStatus = 'failed';
+        updateHomeDiscovery();
         ui.note.textContent = 'Playback did not start. This track may be unavailable in the current browser.';
         resolve(false);
       }, 18000);
@@ -364,6 +448,8 @@ function startTrack(track, options = {}) {
   ui.title.textContent = track.title;
   ui.artist.textContent = track.artist;
   ui.note.textContent = 'Loading YouTube playback…';
+  playerStatus = 'loading';
+  updateHomeDiscovery();
   recordedHistoryId = '';
   trackEnded = false;
   renderQueue();
@@ -376,6 +462,8 @@ function startTrack(track, options = {}) {
       playerVars: { autoplay: 0, controls: 0, playsinline: 1, rel: 0, modestbranding: 1 },
       events: { onReady: onPlayerReady, onStateChange: onPlayerStateChange,
         onError: () => {
+          playerStatus = 'failed';
+          updateHomeDiscovery();
           ui.note.textContent = 'YouTube could not play this video in the current browser.';
           finishPlaybackSelection(false);
         } }
@@ -412,6 +500,8 @@ function onPlayerStateChange(event) {
   }
   $('audio-visualizer').classList.toggle('is-playing', event.data === window.YT.PlayerState.PLAYING);
   if (event.data === window.YT.PlayerState.PLAYING) {
+    playerStatus = 'playing';
+    updateHomeDiscovery();
     ui.note.textContent = 'PLAYING · YOUTUBE';
     ui.play.innerHTML = '<svg class="icon play-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h4v16H7zM15 4h4v16h-4z"/></svg>';
     ui.play.classList.add('is-playing');
@@ -425,12 +515,16 @@ function onPlayerStateChange(event) {
     }
     finishPlaybackSelection(true);
   } else if (event.data === window.YT.PlayerState.PAUSED) {
+    playerStatus = 'paused';
+    updateHomeDiscovery();
     ui.note.textContent = 'PAUSED · YOUTUBE';
     ui.play.innerHTML = '<svg class="icon play-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 4 13 8-13 8z"/></svg>';
     ui.play.classList.remove('is-playing');
     ui.play.setAttribute('aria-label', 'Play');
     ui.play.title = 'Play';
   } else if (event.data === window.YT.PlayerState.ENDED) {
+    playerStatus = 'ended';
+    updateHomeDiscovery();
     ui.play.innerHTML = '<svg class="icon play-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 4 13 8-13 8z"/></svg>';
     ui.play.classList.remove('is-playing');
     ui.play.setAttribute('aria-label', 'Play');
@@ -439,7 +533,12 @@ function onPlayerStateChange(event) {
     updateHistoryCounts('completionCount');
     advanceTrack();
   } else if (event.data === window.YT.PlayerState.CUED) {
+    playerStatus = 'loading';
+    updateHomeDiscovery();
     ui.note.textContent = 'READY · YOUTUBE';
+  } else if (event.data === window.YT.PlayerState.BUFFERING) {
+    playerStatus = 'buffering';
+    updateHomeDiscovery();
   }
 }
 
@@ -479,15 +578,22 @@ function previousTrack() {
 }
 
 async function loadTrending() {
-  if (!signedInUser) return;
+  if (!signedInUser) {
+    ui.homeTrendingStatus.textContent = 'SIGN IN REQUIRED · Sign in to load trending music.';
+    return;
+  }
   ui.discoveryStatus.textContent = 'Loading trending tracks…';
+  ui.homeTrendingStatus.textContent = 'Loading trending tracks…';
   try {
     const data = await api('/api/trending', {}, true);
-    const tracks = (data.results || []).map(trackFrom);
-    renderTracks(ui.results, tracks, 'results');
-    ui.discoveryStatus.textContent = tracks.length ? 'TRENDING · choose a row with a video ID to play' : 'No trending tracks returned.';
+    trendingTracks = (data.results || []).map(trackFrom);
+    renderTracks(ui.results, trendingTracks, 'results');
+    renderTracks(ui.homeTrending, trendingTracks.slice(0, 5), 'home-results');
+    ui.discoveryStatus.textContent = trendingTracks.length ? 'TRENDING · choose a track to play' : 'No trending tracks returned.';
+    ui.homeTrendingStatus.textContent = trendingTracks.length ? 'TRENDING · choose a track to play' : 'No trending tracks returned.';
   } catch (error) {
     ui.discoveryStatus.textContent = error.message;
+    ui.homeTrendingStatus.textContent = `Trending unavailable: ${error.message}`;
   }
 }
 
@@ -757,6 +863,7 @@ function applyView(view) {
   ui.queueView.hidden = view !== 'queue';
   ui.settings.hidden = view !== 'settings';
   ui.libraryView.hidden = view !== 'library';
+  updateHomeDiscovery();
   if (view === 'search') {
     intendedView = 'search';
     if (!signedInUser) ui.discoveryStatus.textContent = 'SIGN IN REQUIRED · Sign in to search the music catalog.';
@@ -846,7 +953,7 @@ function navigateLibraryTab(tab) {
 
 async function beginSignIn() {
   if (!auth) {
-    const message = 'Sign-in is unavailable until Firebase Web configuration is added to firebase-config.js.';
+    const message = 'Sign-in is unavailable until Firebase Web configuration is added to the backend environment.';
     ui.authState.textContent = 'CONFIGURATION REQUIRED';
     ui.authFeedback.textContent = message;
     ui.sessionGateMessage.textContent = message;
@@ -880,6 +987,7 @@ function setupEvents() {
   ui.searchButton.addEventListener('click', searchTracks);
   ui.search.addEventListener('keydown', (event) => { if (event.key === 'Enter') searchTracks(); });
   $('refresh-discovery').addEventListener('click', loadTrending);
+  $('refresh-home-trending').addEventListener('click', loadTrending);
   ui.signIn.addEventListener('click', beginSignIn);
   ui.homeSignIn.addEventListener('click', () => beginSignIn());
   ui.headerSignIn.addEventListener('click', () => {

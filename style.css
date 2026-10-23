@@ -17,7 +17,8 @@ button:disabled { cursor: not-allowed; opacity: .36; }
 button:focus-visible, input:focus-visible { outline: 1px solid var(--blue); outline-offset: 3px; }
 .app-shell { width: min(1440px, calc(100% - 30px)); min-height: calc(100vh - 30px); margin: 15px auto; border: 1px solid var(--line-strong); border-radius: 12px; display: flex; flex-direction: column; }
 .topbar { min-height: 60px; padding: 0 24px; display: flex; align-items: center; border-bottom: 1px solid var(--line-strong); gap: 22px; }
-.wordmark { color: var(--blue); text-decoration: none; font-size: 19px; letter-spacing: .04em; font-weight: 600; white-space: nowrap; }
+.wordmark { color: var(--blue); text-decoration: none; font-size: 19px; letter-spacing: .04em; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
+.brand-logo { width: 28px; height: 28px; object-fit: contain; display: block; }
 .top-nav { margin-left: auto; display: flex; gap: clamp(10px, 2.3vw, 32px); align-items: center; }
 .nav-link { color: #aebbc4; text-decoration: none; padding: 21px 3px 19px; border-bottom: 1px solid transparent; font-size: 10px; letter-spacing: .04em; transition: color .15s ease, border-color .15s ease; }
 .nav-link:hover, .nav-link.active { color: var(--blue); }
@@ -145,6 +146,7 @@ input[type="range"]::-moz-range-thumb { width: 9px; height: 9px; border: 0; bord
   .app-shell { width: 100%; min-height: 100vh; margin: 0; border-radius: 0; border-left: 0; border-right: 0; }
   .topbar { min-height: 58px; padding: 0 14px; gap: 10px; }
   .wordmark { font-size: 17px; }
+  .brand-logo { width: 25px; height: 25px; }
   .mobile-menu-toggle { display: inline-grid; min-width: 36px; min-height: 36px; }
   .top-nav { display: none; }
   .header-session { margin-left: auto; gap: 7px; padding-left: 10px; }
@@ -278,6 +280,7 @@ input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; }
   .topbar { gap: 4px; }
   .mobile-menu-toggle { min-width: 40px; min-height: 40px; padding: 6px; }
   .wordmark { font-size: 15px; letter-spacing: .02em; }
+  .brand-logo { width: 22px; height: 22px; }
   .header-session { gap: 4px; padding-left: 6px; }
   .header-account { max-width: 58px; }
   .header-action { padding: 5px; font-size: 8px; }

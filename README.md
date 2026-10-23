@@ -24,13 +24,19 @@ LumiOne is a native Android music player built around music discovery and a focu
 
 The interface uses deep navy surfaces and cyan accents, with a vinyl-inspired Now Playing screen. Playback is designed to continue while the app is in the background, with Android media notification and lock-screen controls.
 
-> **Release:** v1.2.0<br>
-> **Package:** `com.lumione.player`<br>
+> **Release:** v1.2.0  
+> **Package:** `com.lumione.player`  
 > **Minimum Android version:** Android 8.0 (API 26)
 
 ## Screenshots
 
-Add current screenshots to `docs/screenshots/` and update the filenames below. Keep screenshots current with the version in this README.
+### App Version
+<!-- Suggested screenshot files:
+docs/screenshots/home.png
+docs/screenshots/search.png
+docs/screenshots/now-playing.png
+docs/screenshots/library.png
+-->
 
 <div align="center">
 <table>
@@ -40,6 +46,17 @@ Add current screenshots to `docs/screenshots/` and update the filenames below. K
     <td align="center"><strong>Now Playing</strong><br/><img src="docs/screenshots/now-playing.png" alt="LumiOne Now Playing screen" width="220"/></td>
   </tr>
 </table>
+</div>
+
+### Web Version
+
+<div align="center">
+  <img
+    src="docs/screenshots/web-version.png"
+    alt="LumiOne official web version"
+    width="900"
+  />
+  <p><em>LumiOne — Official Web Experience</em></p>
 </div>
 
 ## Features

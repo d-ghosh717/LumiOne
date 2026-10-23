@@ -411,7 +411,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="LumiOne v1.1.0 • 320 kbps HD"
+                android:text="LumiOne v1.2.0 • 320 kbps HD"
                 android:textColor="@color/text_dim"
                 android:textSize="11sp"
                 android:fontFamily="@font/manrope" />

@@ -1085,10 +1085,11 @@
                     android:fontFamily="@font/manrope" />
 
                 <TextView
+                    android:id="@+id/tvAppVersion"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_alignParentEnd="true"
-                    android:text="1.1.0 (Build 2026.2)"
+                    android:text="v1.2.0"
                     android:textColor="@color/text_primary"
                     android:textSize="14sp"
                     android:textStyle="bold"

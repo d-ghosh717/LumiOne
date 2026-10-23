@@ -122,6 +122,8 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private lateinit var bottomNavBar: ViewGroup
     private var currentNavTab = -1
     private var navigationTransitionToken = 0
+    private var cachedManropeTypeface: android.graphics.Typeface? = null
+    private var lastLoadedProfilePhotoUrl: String? = null
 
     // ─── Bottom Navigation Views ─────────────────────────────────────────────
     private lateinit var navTabHome: View
@@ -579,6 +581,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         txtPrefHapticStatus = includeProfile.findViewById(R.id.txtPrefHapticStatus)
         rowClearHistory = includeProfile.findViewById(R.id.rowClearHistory)
         rowClearFavorites = includeProfile.findViewById(R.id.rowClearFavorites)
+        includeProfile.findViewById<TextView>(R.id.tvAppVersion)?.text = "v${com.lumione.player.BuildConfig.VERSION_NAME}"
 
         // Navigation Drawer
         navDrawerContainer = findViewById(R.id.navDrawerContainer)
@@ -659,36 +662,24 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     private fun selectNavTab(index: Int) {
         if (index !in 0..3 || index == currentNavTab) return
-        val previousIndex = currentNavTab
         currentNavTab = index
         val destinations = listOf(includeHome, includeSearch, includeLibrary, includeProfile)
-        val token = ++navigationTransitionToken
-        val reduceMotion = !android.animation.ValueAnimator.areAnimatorsEnabled()
+
+        // Instant destination screen switch without delayed alpha dimming
         destinations.forEachIndexed { destinationIndex, view ->
             if (destinationIndex == index) {
                 view.animate().cancel()
                 view.visibility = View.VISIBLE
-                if (reduceMotion || previousIndex < 0) view.alpha = 1f else {
-                    view.alpha = 0f
-                    view.animate().alpha(1f).setDuration(150).start()
-                }
-            } else if (view.visibility == View.VISIBLE && destinationIndex == previousIndex && !reduceMotion) {
-                view.animate().cancel()
-                view.animate().alpha(0f).setDuration(100).withEndAction {
-                    if (token == navigationTransitionToken) {
-                        view.visibility = View.GONE
-                        view.alpha = 1f
-                    }
-                }.start()
+                view.alpha = 1f
             } else {
                 view.animate().cancel()
                 view.visibility = View.GONE
-                view.alpha = 1f
             }
         }
 
-        val navTransition = android.transition.AutoTransition().apply {
-            duration = 180L
+        // ChangeBounds ensures the active icon shows instantly on frame 0 while smoothly gliding tab width
+        val navTransition = android.transition.ChangeBounds().apply {
+            duration = 130L
             interpolator = androidx.interpolator.view.animation.FastOutSlowInInterpolator()
         }
         android.transition.TransitionManager.beginDelayedTransition(bottomNavBar, navTransition)
@@ -713,7 +704,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         tabs.forEachIndexed { i, tab ->
             val lp = tab.layoutParams as? LinearLayout.LayoutParams
             if (lp != null) {
-                lp.weight = if (i == index) 1.8f else 0.9f
+                lp.weight = if (i == index) 1.8f else 0.88f
                 tab.layoutParams = lp
             }
         }
@@ -749,9 +740,11 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         navTabSearch.setOnClickListener {
             triggerHaptic(it)
             selectNavTab(1)
-            searchTabInput.requestFocus()
-            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.showSoftInput(searchTabInput, InputMethodManager.SHOW_IMPLICIT)
+            searchTabInput.post {
+                searchTabInput.requestFocus()
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                imm?.showSoftInput(searchTabInput, InputMethodManager.SHOW_IMPLICIT)
+            }
         }
         navTabLibrary.setOnClickListener { triggerHaptic(it); selectNavTab(2) }
         navTabProfile.setOnClickListener { triggerHaptic(it); selectNavTab(3) }
@@ -785,9 +778,11 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             triggerHaptic(it)
             hideNavDrawer()
             selectNavTab(1)
-            searchTabInput.requestFocus()
-            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.showSoftInput(searchTabInput, InputMethodManager.SHOW_IMPLICIT)
+            searchTabInput.post {
+                searchTabInput.requestFocus()
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                imm?.showSoftInput(searchTabInput, InputMethodManager.SHOW_IMPLICIT)
+            }
         }
 
         nd.findViewById<View>(R.id.drawerItemLibrary)?.setOnClickListener {
@@ -1200,12 +1195,15 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         recentSearchesSection.visibility = if (showSection) View.VISIBLE else View.GONE
         btnClearRecentSearches.visibility = if (items.isNotEmpty()) View.VISIBLE else View.GONE
         recentSearchesEmpty.visibility = if (showSection && items.isEmpty()) View.VISIBLE else View.GONE
+        val font = cachedManropeTypeface ?: androidx.core.content.res.ResourcesCompat.getFont(this@MainActivity, R.font.manrope).also {
+            cachedManropeTypeface = it
+        }
         items.forEach { recent ->
             val row = TextView(this).apply {
                 text = recent.query
                 setTextColor(getColor(R.color.text_muted))
                 textSize = 14f
-                typeface = androidx.core.content.res.ResourcesCompat.getFont(this@MainActivity, R.font.manrope)
+                typeface = font
                 setPadding(12, 10, 12, 10)
                 isClickable = true
                 isFocusable = true
@@ -1413,12 +1411,16 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     private fun refreshLibraryTab() {
+        if (libraryRecyclerView.layoutManager == null) {
+            libraryRecyclerView.layoutManager = LinearLayoutManager(this)
+        }
         when (currentLibraryTab) {
             0 -> {
                 btnNewPlaylistHeader.visibility = View.VISIBLE
                 btnLibraryAction.visibility = View.GONE
-                libraryRecyclerView.layoutManager = LinearLayoutManager(this)
-                libraryRecyclerView.adapter = libraryPlaylistAdapter
+                if (libraryRecyclerView.adapter !== libraryPlaylistAdapter) {
+                    libraryRecyclerView.adapter = libraryPlaylistAdapter
+                }
                 val playlists = playlistManager.getPlaylists()
                 libraryCountLabel.text = if (playlists.size == 1) "1 Personal Playlist" else "${playlists.size} Personal Playlists"
                 if (playlists.isEmpty()) {
@@ -1437,8 +1439,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             }
             1 -> {
                 btnNewPlaylistHeader.visibility = View.GONE
-                libraryRecyclerView.layoutManager = LinearLayoutManager(this)
-                libraryRecyclerView.adapter = libraryTrackAdapter
+                if (libraryRecyclerView.adapter !== libraryTrackAdapter) {
+                    libraryRecyclerView.adapter = libraryTrackAdapter
+                }
                 val favorites = favoritesManager.getFavorites()
                 btnLibraryAction.visibility = if (favorites.isNotEmpty()) View.VISIBLE else View.GONE
                 libraryCountLabel.text = "${favorites.size} Liked Songs"
@@ -1460,8 +1463,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             }
             2 -> {
                 btnNewPlaylistHeader.visibility = View.GONE
-                libraryRecyclerView.layoutManager = LinearLayoutManager(this)
-                libraryRecyclerView.adapter = libraryTrackAdapter
+                if (libraryRecyclerView.adapter !== libraryTrackAdapter) {
+                    libraryRecyclerView.adapter = libraryTrackAdapter
+                }
                 val history = historyManager.getHistory().map { it.track }
                 btnLibraryAction.visibility = if (history.isNotEmpty()) View.VISIBLE else View.GONE
                 libraryCountLabel.text = "${history.size} Recently Played Tracks"
@@ -1483,8 +1487,9 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             }
             3 -> {
                 btnNewPlaylistHeader.visibility = View.GONE
-                libraryRecyclerView.layoutManager = LinearLayoutManager(this)
-                libraryRecyclerView.adapter = libraryTrackAdapter
+                if (libraryRecyclerView.adapter !== libraryTrackAdapter) {
+                    libraryRecyclerView.adapter = libraryTrackAdapter
+                }
                 val queue = activeQueueManager().queue.value.orEmpty()
                 btnLibraryAction.visibility = if (queue.isNotEmpty()) View.VISIBLE else View.GONE
                 libraryCountLabel.text = "${queue.size} Tracks in Playback Queue"
@@ -1695,24 +1700,28 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
             val photoUrl = user.photoUrl?.toString()
             if (!photoUrl.isNullOrBlank()) {
-                profileAvatar.setPadding(0, 0, 0, 0)
-                Glide.with(this)
-                    .load(photoUrl)
-                    .circleCrop()
-                    .placeholder(R.drawable.bg_album_art_placeholder)
-                    .into(profileAvatar)
-                profileAvatar.clearColorFilter()
-
-                if (::drawerAvatar.isInitialized) {
-                    drawerAvatar.setPadding(0, 0, 0, 0)
+                if (lastLoadedProfilePhotoUrl != photoUrl) {
+                    lastLoadedProfilePhotoUrl = photoUrl
+                    profileAvatar.setPadding(0, 0, 0, 0)
                     Glide.with(this)
                         .load(photoUrl)
                         .circleCrop()
                         .placeholder(R.drawable.bg_album_art_placeholder)
-                        .into(drawerAvatar)
-                    drawerAvatar.clearColorFilter()
+                        .into(profileAvatar)
+                    profileAvatar.clearColorFilter()
+
+                    if (::drawerAvatar.isInitialized) {
+                        drawerAvatar.setPadding(0, 0, 0, 0)
+                        Glide.with(this)
+                            .load(photoUrl)
+                            .circleCrop()
+                            .placeholder(R.drawable.bg_album_art_placeholder)
+                            .into(drawerAvatar)
+                        drawerAvatar.clearColorFilter()
+                    }
                 }
             } else {
+                lastLoadedProfilePhotoUrl = null
                 val pad = (14 * resources.displayMetrics.density).toInt()
                 profileAvatar.setPadding(pad, pad, pad, pad)
                 profileAvatar.setImageResource(R.drawable.ic_profile)
@@ -1726,6 +1735,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 }
             }
         } else {
+            lastLoadedProfilePhotoUrl = null
             profileEmail.text = "Sign in to sync your favorites & stream"
             profileAuthText.text = "Sign In with Google"
             profileAuthIcon.setImageResource(R.drawable.ic_google)

@@ -25,7 +25,6 @@ release/
 *SETUP*.md
 *setup*.md
 FIREBASE_SETUP.md
-SECURITY*.md
 
 # Backup, temp, and editor artifacts
 *.bak

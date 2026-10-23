@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="340" viewBox="0 0 1200 340" role="img" aria-labelledby="title desc">
+  <title id="title">LumiOne Web</title>
+  <desc id="desc">A minimal black and cyan terminal-inspired music player banner with an audio waveform.</desc>
+  <rect width="1200" height="340" rx="22" fill="#000000"/>
+  <rect x="1" y="1" width="1198" height="338" rx="21" fill="none" stroke="#163642" stroke-width="2"/>
+  <g transform="translate(82 78)" fill="none" stroke="#00CFFF" stroke-width="8" stroke-linecap="round">
+    <path d="M0 63V83 M20 45V101 M40 27V119 M60 8V138 M80 36V110 M100 20V126 M120 0V146 M140 34V112 M160 15V131 M180 45V101 M200 60V86"/>
+  </g>
+  <text x="345" y="142" fill="#00CFFF" font-family="monospace, monospace" font-size="68" font-weight="700" letter-spacing="4">LumiOne</text>
+  <text x="350" y="195" fill="#B8C8D1" font-family="monospace, monospace" font-size="23" letter-spacing="3">A QUIETER KIND OF MUSIC</text>
+  <path d="M350 228H1095" stroke="#163642" stroke-width="2"/>
+  <text x="350" y="270" fill="#607987" font-family="monospace, monospace" font-size="16" letter-spacing="2">WEB PLAYER  /  SEARCH  /  QUEUE  /  LIBRARY</text>
+  <circle cx="1095" cy="270" r="5" fill="#00CFFF"/>
+</svg>

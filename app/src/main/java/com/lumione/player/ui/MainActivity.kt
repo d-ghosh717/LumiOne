@@ -119,7 +119,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private lateinit var includeLibrary: View
     private lateinit var includeProfile: View
     private lateinit var mainContentContainer: View
-    private lateinit var bottomNavBar: View
+    private lateinit var bottomNavBar: ViewGroup
     private var currentNavTab = -1
     private var navigationTransitionToken = 0
 
@@ -234,7 +234,6 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     private lateinit var rowClearFavorites: View
 
     // ─── Navigation Drawer Views ──────────────────────────────────────────────
-    private lateinit var btnHomeMenu: View
     private lateinit var navDrawerContainer: View
     private lateinit var navDrawerPanel: View
     private lateinit var navDrawerScrim: View
@@ -582,7 +581,6 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         rowClearFavorites = includeProfile.findViewById(R.id.rowClearFavorites)
 
         // Navigation Drawer
-        btnHomeMenu = includeHome.findViewById(R.id.btnHomeMenu)
         navDrawerContainer = findViewById(R.id.navDrawerContainer)
         val nd = findViewById<View>(R.id.includeNavDrawer) ?: navDrawerContainer
         navDrawerPanel = nd.findViewById(R.id.navDrawerPanel)
@@ -689,6 +687,12 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
             }
         }
 
+        val navTransition = android.transition.AutoTransition().apply {
+            duration = 180L
+            interpolator = androidx.interpolator.view.animation.FastOutSlowInInterpolator()
+        }
+        android.transition.TransitionManager.beginDelayedTransition(bottomNavBar, navTransition)
+
         // Tab 0: Home
         pillHomeActive.visibility = if (index == 0) View.VISIBLE else View.GONE
         circleHomeInactive.visibility = if (index == 0) View.GONE else View.VISIBLE
@@ -726,6 +730,19 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
     }
 
     private fun setupNavigation() {
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.mainActivityRoot)) { _, insets ->
+            val navBars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
+            val density = resources.displayMetrics.density
+            val baseMargin = (16 * density).toInt()
+            val targetMargin = baseMargin + navBars.bottom
+            val lp = bottomNavBar.layoutParams as? RelativeLayout.LayoutParams
+            if (lp != null && lp.bottomMargin != targetMargin) {
+                lp.bottomMargin = targetMargin
+                bottomNavBar.layoutParams = lp
+            }
+            insets
+        }
+
         selectNavTab(0)
 
         navTabHome.setOnClickListener { triggerHaptic(it); selectNavTab(0) }
@@ -845,7 +862,6 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     private fun setupHomeScreen() {
         btnHomeProfile.setOnClickListener { triggerHaptic(it); selectNavTab(3) }
-        btnHomeMenu.setOnClickListener { triggerHaptic(it); showNavDrawer() }
 
         homeSearchTrigger.setOnClickListener {
             triggerHaptic(it)
@@ -1873,7 +1889,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
                 turntableTonearm.pivotY = turntableTonearm.height * (16f / 120f)
             }
         }
-        turntableTonearm.rotation = -25f
+        turntableTonearm.rotation = 0f
 
         btnNowPlayingAddToPlaylist.setOnClickListener {
             triggerHaptic(it)
@@ -2926,7 +2942,7 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
 
     private fun setTonearmPlaying(playing: Boolean) {
         if (!::turntableTonearm.isInitialized) return
-        val targetRotation = if (playing) 0f else -25f
+        val targetRotation = if (playing) 25f else 0f
         if (tonearmPlaying == playing && turntableTonearm.rotation == targetRotation) return
         tonearmPlaying = playing
         if (turntableTonearm.width > 0) {
@@ -2935,8 +2951,8 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         }
         tonearmAnimator?.cancel()
         val animator = ObjectAnimator.ofFloat(turntableTonearm, View.ROTATION, turntableTonearm.rotation, targetRotation).apply {
-            duration = 320L
-            interpolator = DecelerateInterpolator()
+            duration = 450L
+            interpolator = androidx.interpolator.view.animation.FastOutSlowInInterpolator()
         }
         tonearmAnimator = animator
         animator.start()
@@ -2962,12 +2978,10 @@ class MainActivity : AppCompatActivity(), PlaybackService.PlaybackServiceListene
         super.onResume()
         val isPlaying = playbackService?.isPlaying == true
         val activePlaying = isPlaying && !trackPreparing
-        if (activePlaying) {
-            nowPlayingVinylDisc.setPlaying(true)
-            setTonearmPlaying(true)
-            if (::nowPlayingWaveform.isInitialized) {
-                nowPlayingWaveform.setPlaying(true)
-            }
+        nowPlayingVinylDisc.setPlaying(activePlaying)
+        setTonearmPlaying(activePlaying)
+        if (::nowPlayingWaveform.isInitialized) {
+            nowPlayingWaveform.setPlaying(activePlaying)
         }
     }
 

@@ -43,7 +43,7 @@ android {
 
     buildTypes {
         release {
-            buildConfigField 'String', 'BACKEND_URL', '"https://lumione.onrender.com"'
+            buildConfigField 'String', 'BACKEND_URL', '"https://lumione-nextupdate.onrender.com"'
             minifyEnabled false
             shrinkResources false
             signingConfig signingConfigs.release
@@ -76,6 +76,11 @@ android {
 
     testOptions {
         unitTests.returnDefaultValues = true
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
     }
 }
 

@@ -21,3 +21,20 @@ logcat.txt
 release/
 *.apk
 
+# Setup and temporary documentation
+*SETUP*.md
+*setup*.md
+FIREBASE_SETUP.md
+SECURITY*.md
+
+# Backup, temp, and editor artifacts
+*.bak
+*.tmp
+*.swp
+*~
+.DS_Store
+*/.DS_Store
+Thumbs.db
+
+# Web application directory exclusion
+web/

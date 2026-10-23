@@ -18,12 +18,13 @@ afterEach(() => {
     else app.locals.recommendationProviders = originalProviders;
 });
 
-async function requestRelated(title, artist, videoId) {
+async function requestRelated(title, artist, videoId, extra = {}) {
     const url = new URL(`${baseUrl}/api/recommendations/related`);
     url.searchParams.set('title', title);
     url.searchParams.set('artist', artist);
     url.searchParams.set('limit', '10');
     if (videoId) url.searchParams.set('videoId', videoId);
+    Object.entries(extra).forEach(([key, value]) => url.searchParams.set(key, String(value)));
     const response = await fetch(url);
     return { status: response.status, body: await response.json() };
 }
@@ -67,6 +68,24 @@ test('Failed providers return an empty limited result and never inject global ch
     assert.equal(result.body.returnedCount, 0);
     assert.ok(result.body.diagnostics.sourceRuns.some(x => x.status === 'failed'));
     assert.ok(result.body.results.every(x => x.source !== 'generic_chart'));
+});
+
+test('Related endpoint uses account recent tracks to suppress repeats', async () => {
+    app.locals.recommendationProviders = {
+        youtubeSearch: async query => query.toLowerCase().includes('alan walker songs') ? [
+            { id: 'aw-recent-001', youtubeVideoId: 'aw-recent-001', title: 'Alan Walker - Sing Me To Sleep', artist: 'Alan Walker', duration: 210, provider: 'lumione' },
+            { id: 'aw-new-001', youtubeVideoId: 'aw-new-001', title: 'Alan Walker - Diamond Heart', artist: 'Alan Walker', duration: 220, provider: 'lumione' }
+        ] : [],
+        fetchYouTubeWatchNext: async () => [],
+        fetchJioSaavnArtistSongs: async () => []
+    };
+    const result = await requestRelated('Faded', 'Alan Walker', '', {
+        recentTracks: JSON.stringify([{ title: 'Sing Me To Sleep', artist: 'Alan Walker' }]),
+        likedArtists: JSON.stringify(['Alan Walker'])
+    });
+    assert.equal(result.status, 200);
+    assert.ok(result.body.results.some(track => track.title.includes('Diamond Heart')));
+    assert.ok(result.body.results.every(track => !track.title.includes('Sing Me To Sleep')));
 });
 
 test('Profile recommendations without seed or preference candidates return empty instead of charts', async () => {

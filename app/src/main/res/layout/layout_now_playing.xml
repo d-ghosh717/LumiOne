@@ -64,6 +64,8 @@
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:clipChildren="false"
+                android:clipToPadding="false"
                 android:layout_gravity="center_horizontal">
 
                 <RelativeLayout
@@ -71,6 +73,8 @@
                     android:layout_height="290dp"
                     android:layout_gravity="center"
                     android:background="@drawable/bg_turntable_deck"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
                     android:padding="12dp">
 
                     <!-- Mathematically Precise Single-Unit Vinyl Disc -->
@@ -82,13 +86,13 @@
                         android:layout_alignParentStart="true"
                         android:layout_marginStart="8dp" />
 
-                    <!-- Turntable Tonearm (Stationary Over Rotating Vinyl) -->
+                    <!-- Turntable Tonearm (Pivots smoothly over rotating vinyl) -->
                     <ImageView
                         android:id="@+id/turntableTonearm"
-                        android:layout_width="72dp"
-                        android:layout_height="186dp"
+                        android:layout_width="76dp"
+                        android:layout_height="192dp"
                         android:layout_alignParentEnd="true"
-                        android:layout_marginTop="14dp"
+                        android:layout_marginTop="12dp"
                         android:layout_marginEnd="6dp"
                         android:src="@drawable/ic_turntable_arm"
                         android:contentDescription="Turntable tonearm" />

@@ -16,30 +16,12 @@
         android:paddingTop="36dp"
         android:paddingBottom="240dp">
 
-        <!-- Top Header: Menu, Branding & Profile (Consistent 42dp Balanced Sizing) -->
+        <!-- Top Header: Branding & Profile -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:paddingHorizontal="20dp"
             android:layout_marginBottom="8dp">
-
-            <!-- Circular Menu Icon Button -->
-            <FrameLayout
-                android:id="@+id/btnHomeMenu"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
-                android:layout_alignParentStart="true"
-                android:layout_centerVertical="true"
-                android:background="@drawable/bg_icon_button">
-
-                <ImageView
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:layout_gravity="center"
-                    android:src="@drawable/ic_menu_bars"
-                    android:tint="@color/text_primary"
-                    android:contentDescription="Menu" />
-            </FrameLayout>
 
             <!-- LumiOne Center Branding with Logo Icon -->
             <LinearLayout

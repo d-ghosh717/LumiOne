@@ -592,19 +592,26 @@ app.get('/api/recommendations/related', optionalFirebaseAuth, async (req, res) =
         }
     }
     candidates = [...byRecording.values()];
-    const recentKeys = [seedKey];
-    if (req.query.recentKeys) {
+    const readArray = (name) => {
         try {
-            const recent = JSON.parse(String(req.query.recentKeys));
-            if (Array.isArray(recent)) recentKeys.push(...recent.map(String));
-        } catch (_) {}
-    }
+            const value = JSON.parse(String(req.query[name] || '[]'));
+            return Array.isArray(value) ? value.slice(0, 50) : [];
+        } catch (_) { return []; }
+    };
+    const recentKeys = [seedKey, ...readArray('recentKeys').map(String),
+        ...readArray('recentTracks').filter(item => item && item.title).map(item => recommender.extractCanonicalKey(String(item.title), String(item.artist || '')))];
+    const likedTrackKeys = [...readArray('likedTrackKeys').map(String),
+        ...readArray('likedTracks').filter(item => item && item.title).map(item => recommender.extractCanonicalKey(String(item.title), String(item.artist || '')))];
     const ranked = recommender.rankRecommendations(candidates, {
         seedProfile,
         seedTitle: title,
         seedArtists: [artist],
+        likedArtists: readArray('likedArtists').map(String),
+        topPlayedArtists: readArray('topPlayedArtists').map(String),
+        likedTrackKeys,
+        skippedArtists: readArray('skippedArtists').map(String),
         recentTrackKeys: recentKeys,
-        excludeKeys: [seedKey]
+        excludeKeys: recentKeys
     }, limit);
     return res.json({
         seed: { title, artist, videoId },

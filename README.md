@@ -1,29 +1,141 @@
-# LUMIONE Web Player
+![LumiOne Web](assets/lumione-web-banner.svg)
 
-This static HTML/CSS/JavaScript client is served by the existing Express backend. Its hash routes split Home, Search, Queue, Library, and Settings. Search and trending use Firebase-authenticated `/api/search` and `/api/trending`; radio recommendations use `/api/recommendations/related`, backed by the same hybrid recommender as the Android app. The web client passes the same Firebase ID token as `Authorization: Bearer <token>`.
+<div align="center">
 
-## Run
+# LumiOne — Web Player
 
-From `/Volumes/d/Projects/MusicPlayer/web`:
+**A quieter kind of music.**
 
-```sh
-cd backend && npm start
+A minimal, terminal-inspired music player for the web, built around discovery, playback, and a shared music library.
+
+[**Open LumiOne**](https://lumione.onrender.com) · [Repository](https://github.com/d-ghosh717/LumiOne/tree/web)
+
+</div>
+
+---
+
+## Overview
+
+LumiOne Web is the browser companion to the LumiOne Android app. It uses a lightweight **HTML, CSS, and JavaScript** frontend served by the existing **Express** backend.
+
+The interface keeps things deliberately minimal: a black canvas, cyan-blue accents, monospace typography, and no album-art clutter.
+
+## Features
+
+- **Music discovery** — search tracks and load trending results through the backend.
+- **Playback controls** — play supported tracks with a usable YouTube video ID.
+- **Queue** — manage upcoming tracks while keeping manually queued songs ahead of generated recommendations.
+- **Related tracks** — recommendations use the existing hybrid recommendation engine shared with the Android app.
+- **Personal library** — History, Liked Songs, and Playlists use the same Firebase user identity and Firestore data model as the mobile app.
+- **Responsive UI** — desktop layout with a compact navigation experience for smaller screens.
+- **Firebase authentication** — authenticated API requests send the Firebase ID token as `Authorization: Bearer <token>`.
+
+> **Playback note:** a search result must include a usable YouTube video ID to be playable. Metadata-only results cannot start playback.
+
+## Interface
+
+The visual direction is intentionally restrained: pure black, white text, LumiOne cyan-blue, thin dividers, and compact monospace controls.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    U[Browser UI] --> P[Home · Search · Queue · Library · Settings]
+    P --> A[Firebase Authentication]
+    P --> B[Express Backend]
+    P --> F[Cloud Firestore]
+    A -->|Firebase ID token| B
+    B --> R[Search and Trending APIs]
+    B --> M[Hybrid Recommendation Engine]
+    F --> L[Likes · History · Playlists]
+    M --> Q[Related Tracks / Next Picks]
 ```
 
-Open `http://localhost:3000`.
+### Main components
 
-## Firebase Web sign-in setup
+| Path | Purpose |
+| --- | --- |
+| `index.html` | App shell, navigation, and script loading |
+| `style.css` | Responsive black-and-cyan interface |
+| `script.js` | Client-side navigation, player UI, and API integration |
+| `firebase-config.js` | Local Firebase Web client configuration |
+| `firebase-config.example.js` | Safe configuration template |
+| `backend/server.js` | Express server, API routes, and authentication verification |
+| `backend/recommender.js` | Recommendation and music-ranking logic |
+| `backend/music_intelligence.js` | Music discovery and intelligence utilities |
 
-The web client uses the existing Firebase project and Google Auth provider. Ensure Google sign-in is enabled in Firebase Authentication and the deployment host is listed in Authentication's authorized domains. Library data reads and writes use Firebase Web Firestore against the Android app's existing `users/{uid}/favorites`, `history`, and `playlists` collections. Deploy the existing `firestore.rules` from the Android project so reads and writes remain restricted to the authenticated UID. The Web app settings live in `firebase-config.js`; replace them only when changing Firebase projects.
+## Run locally
 
-The values above are Firebase browser client configuration, not service-account credentials. Never place a service-account JSON/private key or an ID token in web files. If configuration is missing, the UI keeps the sign-in actions visible and explains the setup requirement; authenticated API calls are not attempted.
+**Requirements:** Node.js and npm.
 
-## Settings and API limits
+From the repository root:
 
-The mobile Radio queue obtains seed-related candidates from the backend, ranks them with its hybrid recommender using history, likes, skipped artists, and recent tracks, preserves manual upcoming entries, and suppresses duplicates. The web uses the same backend engine and Firestore-backed account signals, preserves manually added tracks ahead of generated recommendations, and excludes recent/current queue tracks where the existing engine supports it. The queue and current playback position remain local to each device; the Android app does not persist a shared queue or playback position. Shuffle/repeat defaults remain browser-local because the mobile app has no shared preference storage for them.
+```bash
+npm --prefix backend install
+npm --prefix backend start
+```
 
-History, liked songs, and playlists use the mobile app's Firestore schema and same Firebase UID. Changes are written directly to Firestore and visible on the other platform after its next account-library sync. Recent searches and playback queue state are not shared by the web client.
+Then open [http://localhost:3000](http://localhost:3000).
 
-Playback controls remain disabled until a playable YouTube ID is loaded; metadata-only results without one cannot be played.
+The Express server serves the web client and its API from the same origin. Use the scripts already defined in `backend/package.json`.
 
-There is no separate web build, lint, or type-check command. Run `node --check script.js` and `cd backend && npm test` from this directory for available checks. The mobile repository's backend test suite is under `/Volumes/d/Projects/MusicPlayer/LumiOne/backend/test`.
+## Firebase setup
+
+1. Open the Firebase project used by LumiOne.
+2. Enable the sign-in provider used by the app (Google sign-in, if configured).
+3. Add `localhost` and your deployed hostname to **Firebase Authentication → Settings → Authorized domains**.
+4. Configure the Firebase Web app values in the local `firebase-config.js`, using `firebase-config.example.js` as a template.
+5. Ensure the existing Firestore security rules restrict users to their own data.
+
+The Firebase Web configuration is client-side configuration and will be visible in the browser. **Never put service-account JSON, private keys, ID tokens, or other server secrets in frontend files or Git.** Restrict API keys appropriately in Google Cloud.
+
+For production, set backend-only secrets through the hosting provider's environment configuration rather than committing them to the repository.
+
+## Account sync and recommendation behavior
+
+LumiOne Web uses the same Firebase user identity and Firestore collections as the Android app for:
+
+- Liked songs
+- Listening history
+- Playlists
+
+Data changes become visible across platforms when the other client refreshes or syncs its library. The playback queue and current playback position are **device-local**, not a shared cross-device queue. Shuffle and repeat defaults are browser-local.
+
+The web recommendation flow uses the existing backend engine and account signals where supported. It keeps manual upcoming tracks ahead of generated recommendations and avoids recent or queued tracks when the current recommendation logic supports that behavior.
+
+## Checks
+
+Run the available checks from the repository root:
+
+```bash
+node --check script.js
+npm --prefix backend test
+```
+
+There is no separate web build command for this static frontend. A successful syntax check does not replace testing sign-in, API connectivity, and real playback in a browser.
+
+## Deployment
+
+The production website is:
+
+**https://lumione.onrender.com**
+
+The current Express server serves the static web client and API from the same service. Confirm the Render service uses the intended GitHub repository and `web` branch, and configure any required backend environment variables in Render. Do not commit production secrets.
+
+After deployment, verify sign-in, search, trending playback, queue actions, and library access on the live domain.
+
+## Project principles
+
+- Keep the interface image-free except for the LumiOne brand mark.
+- Keep the black, white, and cyan-blue palette.
+- Reuse the mobile app's backend and recommendation logic rather than duplicating it.
+- Do not use mock data to disguise missing backend functionality.
+- Keep credentials and private configuration out of source control.
+
+---
+
+<div align="center">
+
+**crafted with ♥ and caffeine**
+
+</div>

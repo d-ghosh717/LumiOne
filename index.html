@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="description" content="LUMIONE desktop music player">
+  <title>LumiOne</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="firebase-config.js"></script>
+  <script defer src="https://www.youtube.com/iframe_api"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/13.1.0/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/13.1.0/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore-compat.js"></script>
+  <script defer src="script.js"></script>
+</head>
+
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <button id="mobile-menu-toggle" class="mobile-menu-toggle icon-button" type="button" aria-label="Open navigation"
+        title="Open navigation">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+      <a class="wordmark" href="#/home" data-view="home" aria-label="LUMIONE home">LUMIONE</a>
+      <nav class="top-nav" aria-label="Primary navigation">
+        <a class="nav-link active" href="#/home" data-view="home">HOME</a>
+        <a class="nav-link" href="#/search" data-view="search">SEARCH</a>
+        <a class="nav-link" href="#/queue" data-view="queue">QUEUE</a>
+        <a class="nav-link" href="#/library" data-view="library">LIBRARY</a>
+        <a class="nav-link" href="#/settings" data-view="settings">SETTINGS</a>
+      </nav>
+      <div class="header-session">
+        <button id="header-sign-in" class="header-action">SIGN IN</button>
+        <span id="header-account" class="header-account" hidden></span>
+        <button id="header-sign-out" class="header-action" hidden>SIGN OUT</button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar">
+        <div class="sidebar-heading-row">
+          <div class="side-heading"><span class="prompt">&gt;</span> MENU</div>
+          <button id="sidebar-toggle" class="icon-button sidebar-toggle" type="button" aria-label="Collapse sidebar"
+            title="Collapse sidebar">
+            <svg class="icon collapse-glyph" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m14.5 5-7 7 7 7" />
+            </svg>
+          </button>
+        </div>
+        <a class="side-link selected" href="#/home" data-view="home" aria-label="Home"><svg class="icon side-icon"
+            viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z" />
+          </svg><span class="side-label">HOME</span></a>
+        <a class="side-link" href="#/search" data-view="search" aria-label="Search"><svg class="icon side-icon"
+            viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="10.8" cy="10.8" r="6.8" />
+            <path d="m16 16 5 5" />
+          </svg><span class="side-label">SEARCH</span></a>
+        <a class="side-link" href="#/queue" data-view="queue" aria-label="Queue"><svg class="icon side-icon"
+            viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 5h16M4 10h10M4 15h10M4 20h10" />
+            <path d="m17 13 5 3.5-5 3.5z" />
+          </svg><span class="side-label">QUEUE</span></a>
+        <a class="side-link" href="#/library" data-view="library" aria-label="Library"><svg class="icon side-icon"
+            viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 4h4v16H4zM10 4h4v16h-4zM16 5l4-1 3 15-4 1z" />
+          </svg><span class="side-label">LIBRARY</span></a>
+        <a class="side-link" href="#/settings" data-view="settings" aria-label="Settings"><svg class="icon side-icon"
+            viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" />
+            <path
+              d="m19.4 13.5 1.2.9-1.2 2.1-1.5-.5a7.8 7.8 0 0 1-1.7 1l-.3 1.6h-2.5l-.3-1.6a7.8 7.8 0 0 1-1.7-1l-1.5.5-1.2-2.1 1.2-.9a7.5 7.5 0 0 1 0-2l-1.2-.9 1.2-2.1 1.5.5a7.8 7.8 0 0 1 1.7-1l.3-1.6h2.5l.3 1.6a7.8 7.8 0 0 1 1.7 1l1.5-.5 1.2 2.1-1.2.9a7.5 7.5 0 0 1 0 2Z"
+              transform="translate(-1 -1)" />
+          </svg><span class="side-label">SETTINGS</span></a>
+      </aside>
+      <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Close navigation"
+        hidden></button>
+
+      <main class="main-content">
+        <section class="now-playing section-block" aria-labelledby="now-heading">
+          <h1 id="now-heading" class="section-title"><span class="prompt">&gt;</span> NOW PLAYING</h1>
+          <div class="player-layout">
+            <div class="player-copy">
+              <div id="track-title" class="track-title">NOTHING PLAYING</div>
+              <div id="track-artist" class="track-artist">Choose a playable track from search</div>
+              <div id="player-note" class="player-note">Playback uses the YouTube player for tracks returned with a
+                video ID.</div>
+              <div id="session-gate" class="session-gate" hidden>
+                <strong>SIGN IN TO SEARCH MUSIC</strong>
+                <span>Sign in to load trending tracks and search the music catalog.</span>
+                <span id="session-gate-message" class="session-gate-message" aria-live="polite"></span>
+                <button id="home-sign-in" class="terminal-action">SIGN IN</button>
+              </div>
+            </div>
+            <div class="media-frame" id="media-frame" aria-label="Track playback">
+              <div id="youtube-player"></div>
+              <div id="audio-visualizer" class="audio-visualizer" aria-hidden="true">
+                <i style="--level:18%"></i><i style="--level:34%"></i><i style="--level:24%"></i>
+                <i style="--level:49%"></i><i style="--level:31%"></i><i style="--level:65%"></i>
+                <i style="--level:42%"></i><i style="--level:82%"></i><i style="--level:55%"></i>
+                <i style="--level:36%"></i><i style="--level:71%"></i><i style="--level:45%"></i>
+                <i style="--level:25%"></i><i style="--level:50%"></i><i style="--level:31%"></i>
+                <i style="--level:18%"></i>
+              </div>
+              <div id="player-placeholder" class="media-placeholder">LUMIONE <span>///</span> AUDIO CHANNEL IDLE</div>
+            </div>
+          </div>
+          <div class="timeline">
+            <span id="time-current">0:00</span>
+            <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek within track" disabled>
+            <span id="time-duration">0:00</span>
+          </div>
+          <div class="transport" aria-label="Playback controls">
+            <button id="shuffle" class="transport-small icon-button" aria-label="Toggle shuffle" title="Toggle shuffle"
+              aria-pressed="false" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="m3 7 4.5 0c4 0 5 10 9 10H21M17 13l4 4-4 4M3 17h4.5c1.6 0 2.7-1.9 3.7-4M14 7c.8-.8 1.6-1 2.5-1H21M17 2l4 4-4 4" />
+              </svg></button>
+            <button id="previous" class="icon-button" aria-label="Previous track" title="Previous track" disabled><svg
+                class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 5v14M19 6 8 12l11 6z" />
+              </svg></button>
+            <button id="play-pause" class="play-button icon-button" aria-label="Play" title="Play" disabled><svg
+                class="icon play-glyph" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m7 4 13 8-13 8z" />
+              </svg></button>
+            <button id="next" class="icon-button" aria-label="Next track" title="Next track" disabled><svg class="icon"
+                viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M19 5v14M5 6l11 6-11 6z" />
+              </svg></button>
+            <button id="repeat" class="transport-small icon-button" aria-label="Toggle repeat" title="Repeat off"
+              aria-pressed="false" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3" />
+              </svg><span id="repeat-one" class="repeat-one" hidden>1</span></button>
+          </div>
+        </section>
+
+        <div id="player-view">
+          <section class="section-block queue-section" aria-labelledby="queue-preview-heading">
+            <h2 id="queue-preview-heading" class="section-title"><span class="prompt">&gt;</span> UP NEXT <span
+                id="queue-count">(0)</span> <a class="inline-link" href="#/queue" data-view="queue">VIEW QUEUE</a></h2>
+            <div class="table-head"><span>#</span><span>TRACK</span><span>ARTIST</span><span>LENGTH</span><span></span>
+            </div>
+            <ol id="queue-preview-list" class="track-list"></ol>
+            <p id="queue-empty" class="empty-state">Queue is empty. Search for a track to start listening.</p>
+          </section>
+
+          <section class="section-block recommendation-section" aria-labelledby="recommendation-heading">
+            <h2 id="recommendation-heading" class="section-title"><span class="prompt">&gt;</span> NEXT PICKS</h2>
+            <ol id="recommendation-list" class="track-list"></ol>
+            <p id="recommendation-empty" class="empty-state">Play a track to load related music.</p>
+          </section>
+
+        </div>
+
+        <section class="page-section discovery-section" id="search-view" hidden aria-labelledby="discovery-heading">
+          <div class="section-heading-row">
+            <h2 id="discovery-heading" class="section-title"><span class="prompt">&gt;</span> MUSIC DISCOVERY</h2>
+            <button id="refresh-discovery" class="text-button">REFRESH TRENDING</button>
+          </div>
+          <div class="search-row">
+            <label for="search-input">&gt; QUERY</label>
+            <input id="search-input" type="search" autocomplete="off" placeholder="Track or artist name">
+            <button id="search-button" class="outline-button">SEARCH</button>
+          </div>
+          <p id="discovery-status" class="status-message" aria-live="polite">Loading music…</p>
+          <ol id="results-list" class="track-list result-list"></ol>
+        </section>
+
+        <section class="page-section queue-view" id="queue-view" hidden aria-labelledby="queue-heading">
+          <h1 id="queue-heading" class="section-title"><span class="prompt">&gt;</span> PLAYBACK QUEUE <span
+              id="full-queue-count">(0)</span></h1>
+          <div class="table-head">
+            <span>#</span><span>TRACK</span><span>ARTIST</span><span>LENGTH</span><span>ACTION</span>
+          </div>
+          <ol id="queue-list" class="track-list"></ol>
+          <p id="full-queue-empty" class="empty-state">Queue is empty. Add tracks from Search or play a song to start
+            radio.</p>
+        </section>
+
+        <section class="page-section library-section" id="library-view" hidden>
+          <h1 class="section-title"><span class="prompt">&gt;</span> LIBRARY</h1>
+          <nav class="library-tabs" aria-label="Library sections">
+            <button class="library-tab active" data-library-tab="history">HISTORY</button>
+            <button class="library-tab" data-library-tab="liked">LIKED SONGS</button>
+            <button class="library-tab" data-library-tab="playlists">PLAYLISTS</button>
+          </nav>
+          <p id="library-status" class="status-message" aria-live="polite">Sign in to load your account library.</p>
+          <section id="library-history" class="library-panel">
+            <h2 class="section-title">RECENTLY PLAYED</h2>
+            <ol id="history-list" class="track-list"></ol>
+          </section>
+          <section id="library-liked" class="library-panel" hidden>
+            <h2 class="section-title">LIKED SONGS</h2>
+            <ol id="liked-list" class="track-list"></ol>
+          </section>
+          <section id="library-playlists" class="library-panel" hidden>
+            <div class="section-heading-row">
+              <h2 class="section-title">PLAYLISTS</h2><button id="create-playlist" class="outline-button">NEW
+                PLAYLIST</button>
+            </div>
+            <ol id="playlist-list" class="track-list"></ol>
+            <section id="playlist-detail" hidden>
+              <h3 id="playlist-title" class="section-title"></h3>
+              <ol id="playlist-tracks" class="track-list"></ol>
+            </section>
+          </section>
+        </section>
+
+        <section class="page-section settings-section" id="settings" hidden>
+          <h2 class="section-title"><span class="prompt">&gt;</span> SESSION</h2>
+          <p id="auth-state" class="status-message">Checking sign-in…</p>
+          <div class="session-actions">
+            <button id="sign-in" class="outline-button">SIGN IN WITH GOOGLE</button>
+            <button id="sign-out" class="outline-button" hidden>SIGN OUT</button>
+          </div>
+          <p id="auth-feedback" class="status-message" aria-live="polite"></p>
+          <h2 class="section-title settings-subtitle"><span class="prompt">&gt;</span> PLAYBACK DEFAULTS</h2>
+          <label class="setting-row" for="default-shuffle"><span>SHUFFLE BY DEFAULT</span><input id="default-shuffle"
+              type="checkbox"></label>
+          <label class="setting-row" for="default-repeat"><span>REPEAT MODE</span>
+            <select id="default-repeat">
+              <option value="none">OFF</option>
+              <option value="all">ALL</option>
+              <option value="one">ONE</option>
+            </select>
+          </label>
+          <p id="preferences-feedback" class="status-message" aria-live="polite">Defaults are saved in this browser.</p>
+          <h2 class="section-title settings-subtitle"><span class="prompt">&gt;</span> SYSTEM</h2>
+          <dl class="system-info">
+            <div>
+              <dt>VERSION</dt>
+              <dd>1.2.0</dd>
+            </div>
+            <div>
+              <dt>METADATA SERVICE</dt>
+              <dd id="settings-service">CHECKING</dd>
+            </div>
+          </dl>
+          <p class="about-version">LUMIONE WEB · 1.2.0</p>
+        </section>
+      </main>
+    </div>
+    <footer class="statusbar"><span class="footer-credit">built with ♥ and caffeine</span></footer>
+  </div>
+</body>
+
+</html>

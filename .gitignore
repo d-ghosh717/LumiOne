@@ -1,23 +1,16 @@
-*.iml
-.gradle/
-.idea/
-.DS_Store
-build/
-app/build/
-captures/
-.externalNativeBuild/
-.cxx/
-local.properties
+# Dependencies
 node_modules/
 backend/node_modules/
-backend/bin/
-client_secret*.json
-*.keystore
-*.jks
-credentials*.json
-*.log
-crash.txt
-logcat.txt
-release/
-*.apk
 
+# Environment variables & secrets
+.env
+.env.*
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS metadata
+.DS_Store
+Thumbs.db

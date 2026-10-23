@@ -1,229 +1,29 @@
-# LumiOne `v1.1.0`
+# LUMIONE Web Player
 
-[![Release](https://img.shields.io/badge/Release-v1.1.0-00E5FF.svg)](https://github.com/d-ghosh717/LumiOne/releases)
-[![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B-0A0E1A.svg)](https://developer.android.com)
+This static HTML/CSS/JavaScript client is served by the existing Express backend. Its hash routes split Home, Search, Queue, Library, and Settings. Search and trending use Firebase-authenticated `/api/search` and `/api/trending`; radio recommendations use `/api/recommendations/related`, backed by the same hybrid recommender as the Android app. The web client passes the same Firebase ID token as `Authorization: Bearer <token>`.
 
-> **Discover music. Build your library. Stay in the flow.**
+## Run
 
-LumiOne is a native Android music player focused on music discovery, personal playlists, an immersive listening experience, and uninterrupted background playback. Designed with a deep navy interface and electric cyan accents, it combines a distinctive visual identity with a dedicated audio playback engine. Version 1.1.0 introduces a real hybrid music recommendation engine with alternate-version deduplication and personalized listening behavior signals.
+From `/Volumes/d/Projects/MusicPlayer/web`:
 
----
-
-## Overview
-
-LumiOne brings music discovery and playback together in one native Android experience:
-
-- **Music Discovery** — Search for tracks and artists, and explore curated, trending music charts.
-- **Personal Library** — Save liked tracks, revisit listening history, and manage an active playback queue.
-- **Personal Playlists** — Organize tracks into custom playlists with full creation and editing capabilities.
-- **Background Playback** — Continue listening uninterrupted when the app is minimized or the screen is turned off.
-- **System Media Controls** — Control playback through Android's media notification and supported lock-screen controls.
-- **Immersive Player** — Vinyl-inspired rotating disc, animated playback visuals, and custom audio controls.
-- **Personalized Profile** — Manage listener details and access library shortcuts.
-- **Cloud-Backed Services** — Use an authenticated backend for supported discovery and metadata requests.
-
----
-
-## Features
-
-| Feature | Description |
-| :--- | :--- |
-| **Music Search** | Discover tracks and artists through configured search and discovery services. |
-| **Trending Discovery** | Browse official charts, recommendations, and music-focused collections without non-music noise. |
-| **Audio Playback** | Native audio playback engine powered by AndroidX Media3 and ExoPlayer. |
-| **Background Listening** | Foreground media service for seamless playback outside the app. |
-| **Playback Queue** | View, reorder, and manage the upcoming listening session. |
-| **Favorites & History** | Quick access to liked tracks and recently played music. |
-| **Personal Playlists** | Create, rename, delete, and organize personal music collections. |
-| **Google Sign-In** | Firebase Authentication integration for secure user sessions. |
-| **Custom Interface** | Dark navy surfaces, electric cyan accents, and vinyl-inspired visuals. |
-
-> *Note: Available discovery sources and playback formats depend on provider availability and their respective terms.*
-
----
-
-## Technology Stack
-
-### Android Application
-- **Language**: Kotlin 1.9.22 (JVM 17 Target)
-- **UI Framework**: Native Android XML layouts & custom views (`VinylDiscView`, `CyanWaveformView`)
-- **Audio Engine**: AndroidX Media3 / ExoPlayer 1.2.1 (`PlaybackService`)
-- **Image Loading**: Bumptech Glide 4.16.0
-- **Authentication**: Firebase Authentication & Google Play Services Auth
-- **Build System**: Gradle 8.2 with Android Gradle Plugin 8.2.2
-
-### Cloud Backend
-- **Runtime**: Node.js & Express
-- **Auth Verification**: Firebase Admin SDK
-- **Hosting**: Render Web Service
-- **Live Endpoint**: `https://lumione.onrender.com`
-
-> *The backend supports discovery and metadata operations. Audio playback is handled directly by the Android client and its configured playback providers.*
-
----
-
-## Architecture
-
-```text
-┌──────────────────────────────────────────────┐
-│                LumiOne Android               │
-│                                              │
-│   Home · Search · Library · Profile · Player │
-└──────────────────────┬───────────────────────┘
-                       │ Firebase ID Token
-                       ▼
-┌──────────────────────────────────────────────┐
-│             Express Cloud Backend            │
-│          (https://lumione.onrender.com)      │
-│                                              │
-│   Auth Verification · Search & Chart Metadata│
-└──────────────────────┬───────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────┐
-│           Configured Data Sources            │
-│                                              │
-│   Official Music Charts · Track Metadata     │
-└──────────────────────────────────────────────┘
-
-               Android Audio Playback
-                       │
-                       ▼
-┌──────────────────────────────────────────────┐
-│          Audio Provider Resolution           │
-│                      ↓                       │
-│              Media3 / ExoPlayer              │
-│                      ↓                       │
-│               PlaybackService                │
-│                      ↓                       │
-│         Background & Media Controls          │
-└──────────────────────────────────────────────┘
+```sh
+cd backend && npm start
 ```
 
----
+Open `http://localhost:3000`.
 
-## Getting Started
+## Firebase Web sign-in setup
 
-### Prerequisites
-- **Android Studio**: Iguana (2023.2.1) or newer
-- **JDK**: Java Development Kit 17
-- **Android SDK**: API level 34 (Compile & Target), API level 26 (Minimum)
-- **Git**
-- **Node.js & npm** (optional, only if running the backend locally)
-- A Firebase project configured for Android and Web authentication
+The web client uses the existing Firebase project and Google Auth provider. Ensure Google sign-in is enabled in Firebase Authentication and the deployment host is listed in Authentication's authorized domains. Library data reads and writes use Firebase Web Firestore against the Android app's existing `users/{uid}/favorites`, `history`, and `playlists` collections. Deploy the existing `firestore.rules` from the Android project so reads and writes remain restricted to the authenticated UID. The Web app settings live in `firebase-config.js`; replace them only when changing Firebase projects.
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/d-ghosh717/LumiOne.git
-cd LumiOne
-```
+The values above are Firebase browser client configuration, not service-account credentials. Never place a service-account JSON/private key or an ID token in web files. If configuration is missing, the UI keeps the sign-in actions visible and explains the setup requirement; authenticated API calls are not attempted.
 
-### 2. Configure Android Project
-1. Open the project directory in Android Studio.
-2. Place your `google-services.json` in the `app/` directory.
-3. Keep all private credentials and local configuration out of version control.
+## Settings and API limits
 
-### 3. Build the Application
+The mobile Radio queue obtains seed-related candidates from the backend, ranks them with its hybrid recommender using history, likes, skipped artists, and recent tracks, preserves manual upcoming entries, and suppresses duplicates. The web uses the same backend engine and Firestore-backed account signals, preserves manually added tracks ahead of generated recommendations, and excludes recent/current queue tracks where the existing engine supports it. The queue and current playback position remain local to each device; the Android app does not persist a shared queue or playback position. Shuffle/repeat defaults remain browser-local because the mobile app has no shared preference storage for them.
 
-**Run unit tests:**
-```bash
-./gradlew test
-```
+History, liked songs, and playlists use the mobile app's Firestore schema and same Firebase UID. Changes are written directly to Firestore and visible on the other platform after its next account-library sync. Recent searches and playback queue state are not shared by the web client.
 
-**Build Debug APK:**
-```bash
-./gradlew assembleDebug
-```
-*Generated output: `app/build/outputs/apk/debug/app-debug.apk`*
+Playback controls remain disabled until a playable YouTube ID is loaded; metadata-only results without one cannot be played.
 
-**Build Release APK:**
-```bash
-./gradlew assembleRelease
-```
-*Generated output: `app/build/outputs/apk/release/app-release.apk`*
-
-### 4. Run the Backend Locally (Optional)
-```bash
-cd backend
-npm install
-npm start
-```
-Configure your required environment variables (such as `PORT`, `FIREBASE_SERVICE_ACCOUNT`) before launching the backend service.
-
----
-
-## Configuration and Security
-
-- **Secrets Management**: Never commit API secrets, private service-account keys, signing credentials, or session cookies.
-- **Environment Isolation**: Keep machine-specific `local.properties` and Gradle build artifacts excluded via `.gitignore`.
-- **Encrypted Traffic**: Always use HTTPS for client-backend communications.
-- **Provider Terms**: Respect the terms, access restrictions, and licensing requirements of every music metadata provider.
-
----
-
-## Project Structure
-
-```text
-LumiOne/
-├── app/
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/lumione/player/
-│   │   │   │   ├── auth/          # Firebase authentication & Google Sign-In
-│   │   │   │   ├── data/          # Favorites, History, and Playlist managers
-│   │   │   │   ├── player/        # Media3 audio providers & stream resolvers
-│   │   │   │   ├── queue/         # Queue management & track models
-│   │   │   │   ├── search/        # Search engine & music discovery
-│   │   │   │   ├── service/       # Media3 PlaybackService & notification
-│   │   │   │   └── ui/            # MainActivity, adapters & custom views
-│   │   │   └── res/               # Layouts, drawables, styles & navigation
-│   │   ├── test/                  # JVM unit tests
-│   │   └── androidTest/           # Android instrumentation tests
-│   ├── build.gradle               # App-level build configuration
-│   └── proguard-rules.pro         # ProGuard rules for release builds
-├── backend/                       # Node.js / Express metadata backend
-│   ├── server.js                  # API routes, auth check & discovery logic
-│   └── package.json               # Backend dependencies
-├── release/                       # Distribution release artifacts
-├── build.gradle                   # Root project build configuration
-├── settings.gradle                # Gradle settings
-└── README.md                      # Project documentation
-```
-
----
-
-## Roadmap
-
-- [x] Music discovery restricted to genuine music tracks and official chart playlists.
-- [x] Seamless background audio playback with lock screen and notification controls.
-- [x] Personal playlists management with local persistence.
-- [x] **v1.1.0**: Intelligent hybrid music recommendation engine with alternate-version deduplication, listening signals (plays, completions, skips), and artist diversity.
-- [ ] Offline caching and downloaded track playback.
-- [ ] Synchronized lyrics presentation.
-- [ ] Advanced audio equalizer and audio spatializer options.
-
----
-
-## Contributing
-
-Contributions, bug reports, and suggestions are welcome:
-
-1. Fork the repository.
-2. Create your feature branch (`git checkout -b feature/my-feature`).
-3. Commit your changes (`git commit -m 'feat: add my feature'`).
-4. Run the test suite (`./gradlew test`).
-5. Push to the branch (`git push origin feature/my-feature`).
-6. Open a Pull Request with a clear description of the modifications.
-
----
-
-## License
-
-All rights reserved.
-
-Unless otherwise stated, the source code and project assets are not offered under an open-source license. Contact the repository owner for permission to reuse or redistribute them.
-
-<p align="center">
-  <strong>LumiOne</strong><br/>
-  Built for a better listening experience.
-</p>
+There is no separate web build, lint, or type-check command. Run `node --check script.js` and `cd backend && npm test` from this directory for available checks. The mobile repository's backend test suite is under `/Volumes/d/Projects/MusicPlayer/LumiOne/backend/test`.

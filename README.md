@@ -30,7 +30,6 @@ The interface keeps things deliberately minimal: a black canvas, cyan-blue accen
 - **Responsive UI** — desktop layout with a compact navigation experience for smaller screens.
 - **Firebase authentication** — authenticated API requests send the Firebase ID token as `Authorization: Bearer <token>`.
 
-> **Playback note:** trending can return catalog records without YouTube IDs. The web client searches the existing backend, requires matching track title and artist, and then uses the existing player. It will not play a loosely matched result.
 
 ## Interface
 
